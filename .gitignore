@@ -1,2 +1,41 @@
 PROJECT_PLAN.md
 docs/
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+
+# macOS
+.DS_Store
+
+# Notebooks
+.ipynb_checkpoints/
+
+# --- Data policy -------------------------------------------------------------
+# Large upstream snapshots are NOT committed. They are reproducible from
+# data/raw/manifest.json (URL + SHA-256 + retrieved_at) via `chp fetch`.
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/manifest.json
+
+# Interim artifacts are rebuildable from raw.
+data/interim/*
+!data/interim/.gitkeep
+
+# Processed panel is rebuildable from the committed snapshots.
+data/processed/*
+!data/processed/.gitkeep
+
+# Small California-only slices ARE committed so the repo rebuilds without the
+# 241 MB upstream download. (data/snapshots/ is intentionally not ignored.)
+
+# Models are regenerated; see README.
+models/*
+!models/.gitkeep
