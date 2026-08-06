@@ -1,0 +1,111 @@
+# Source registry for California Housing Pulse.
+#
+# Every raw input is declared here once. `chp fetch` downloads each entry into
+# data/raw/ and records URL, SHA-256, byte size and retrieval time in
+# data/raw/manifest.json. If a download fails, `manual_procedure` is printed and
+# `chp register <source_id> <file>` adopts a hand-downloaded file into the same
+# manifest, so both acquisition paths produce identical provenance records.
+#
+# Verified reachable on 2026-08-03.
+
+schema_version: 1
+
+# A descriptive User-Agent with a contact address is required by BLS and is good
+# practice for the other hosts.
+user_agent: "california-housing-pulse/0.1 (research project; jannikhofmann2000@web.de)"
+
+sources:
+  redfin_county:
+    role: "Target price series plus sales, inventory, days-on-market and sale-to-list predictors."
+    url: "https://redfin-public-data.s3-us-west-2.amazonaws.com/redfin_market_tracker/county_market_tracker.tsv000.gz"
+    filename: "county_market_tracker.tsv000.gz"
+    format: "tsv.gz"
+    approx_bytes: 241131599
+    required: true
+    manual_procedure: |
+      1. Open https://www.redfin.com/news/data-center/
+      2. Scroll to "How it works" / the regional data download section.
+      3. Download the county-level "Redfin Monthly Housing Market Data" file
+         (county_market_tracker.tsv000.gz).
+      4. Run: chp register redfin_county <path-to-downloaded-file>
+    license: >-
+      Redfin Data Center content may be used with attribution. Redfin asks for a
+      citation and a link on first reference. Do not imply Redfin endorsement.
+    citation: "Data from the Redfin Data Center, https://www.redfin.com/news/data-center/"
+    notes: >-
+      Bulk file covers all U.S. counties and every property type; the pipeline
+      filters to California and the "All Residential" aggregate so a county-month
+      is not duplicated across property types. Values are revised, with an
+      approximately four-week curing window.
+
+  fred_mortgage30us:
+    role: "National 30-year fixed mortgage rate; the single financing feature."
+    url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MORTGAGE30US"
+    filename: "MORTGAGE30US.csv"
+    format: "csv"
+    required: true
+    manual_procedure: |
+      1. Open https://fred.stlouisfed.org/series/MORTGAGE30US
+      2. Use "Download" -> "CSV (data)".
+      3. Run: chp register fred_mortgage30us <path-to-downloaded-file>
+    license: >-
+      Freddie Mac PMMS data are copyrighted and provided "as is"; FRED marks the
+      series "citation required". FRED's terms do not override Freddie Mac's.
+    citation: >-
+      Freddie Mac, 30-Year Fixed Rate Mortgage Average in the United States
+      [MORTGAGE30US], retrieved from FRED, Federal Reserve Bank of St. Louis.
+    notes: >-
+      Weekly, ending Thursday, percent, not seasonally adjusted. Only weekly
+      observations released on or before a row's prediction cutoff may be used.
+
+  bls_lau_california:
+    role: "County unemployment (optional county-economic source)."
+    url: "https://download.bls.gov/pub/time.series/la/la.data.11.California"
+    filename: "la.data.11.California"
+    format: "tsv"
+    approx_bytes: 39819522
+    required: false
+    manual_procedure: |
+      1. Open https://download.bls.gov/pub/time.series/la/
+      2. Download "la.data.11.California".
+      3. Run: chp register bls_lau_california <path-to-downloaded-file>
+    license: >-
+      BLS publications are in the public domain except identified third-party
+      material. BLS requests source citation; do not use the BLS emblem.
+    citation: "U.S. Bureau of Labor Statistics, Local Area Unemployment Statistics."
+    notes: >-
+      Contains every California LAUS area (counties, cities, metros); the pipeline
+      keeps only county areas. Estimates are revised, including up to five prior
+      years during annual processing. Requires a descriptive User-Agent.
+
+  bls_lau_series:
+    role: "BLS series metadata; maps series IDs to areas and measures."
+    url: "https://download.bls.gov/pub/time.series/la/la.series"
+    filename: "la.series"
+    format: "tsv"
+    approx_bytes: 4086542
+    required: false
+    manual_procedure: |
+      1. Open https://download.bls.gov/pub/time.series/la/
+      2. Download "la.series".
+      3. Run: chp register bls_lau_series <path-to-downloaded-file>
+    license: "Public domain; see bls_lau_california."
+    citation: "U.S. Bureau of Labor Statistics, Local Area Unemployment Statistics."
+    notes: "Needed to resolve series IDs such as LAUCN060370000000003 to county and measure."
+
+  census_county_fips:
+    role: "Geography crosswalk only; canonical county FIPS codes and names."
+    url: "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
+    filename: "national_county2020.txt"
+    format: "psv"
+    approx_bytes: 126639
+    required: true
+    manual_procedure: |
+      1. Open https://www.census.gov/library/reference/code-lists/ansi.html
+      2. Download the 2020 national county code file (national_county2020.txt).
+      3. Run: chp register census_county_fips <path-to-downloaded-file>
+    license: "Publicly disseminated federal reference data."
+    citation: "U.S. Census Bureau, 2020 ANSI/FIPS county code list."
+    notes: >-
+      Pipe-delimited. State FIPS 06 identifies California. This is metadata, not a
+      predictive feature beyond county identity.
