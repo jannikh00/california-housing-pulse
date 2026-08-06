@@ -16,34 +16,12 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from ..paths import REPORTS_DIR, relative
+from .columns import bounded_columns, load_columns
 from .normalize import CALIFORNIA_STATE_FIPS, month_range
 from .panel import PANEL_KEY
 
 ERROR = "ERROR"
 WARN = "WARN"
-
-# Plausibility bounds. These are deliberately wide: the goal is to catch parsing
-# and unit errors, not to second-guess the housing market.
-VALUE_BOUNDS: dict[str, tuple[float, float]] = {
-    "median_sale_price": (1_000, 50_000_000),
-    "median_list_price": (1_000, 50_000_000),
-    "median_ppsf": (1, 20_000),
-    "homes_sold": (0, 100_000),
-    "pending_sales": (0, 100_000),
-    "new_listings": (0, 100_000),
-    "inventory": (0, 500_000),
-    "months_of_supply": (0, 120),
-    "median_dom": (0, 1_000),
-    "avg_sale_to_list": (0.2, 3.0),
-    "sold_above_list": (0.0, 1.0),
-    "price_drops": (0.0, 1.0),
-    "off_market_in_two_weeks": (0.0, 1.0),
-    "unemployment_rate": (0.0, 100.0),
-    "unemployed": (0, 5_000_000),
-    "employed": (0, 10_000_000),
-    "labor_force": (0, 15_000_000),
-    "mortgage_rate_30y": (0.5, 25.0),
-}
 
 
 @dataclass
@@ -208,28 +186,90 @@ def check_prediction_cutoff(panel: pd.DataFrame, report: ValidationReport) -> No
     )
 
 
-def check_value_bounds(panel: pd.DataFrame, report: ValidationReport) -> None:
+def check_documented_columns(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """The panel and the column registry must describe exactly the same columns.
+
+    Enforced in both directions: an undocumented column fails the build, and so
+    does a documented column that the panel no longer produces.
+    """
+    declared = set(load_columns())
+    actual = set(panel.columns)
+    undocumented = sorted(actual - declared)
+    missing = sorted(declared - actual)
+
+    problems = []
+    if undocumented:
+        problems.append(f"{len(undocumented)} column(s) in the panel but not documented: "
+                        + ", ".join(undocumented))
+    if missing:
+        problems.append(f"{len(missing)} documented column(s) absent from the panel: "
+                        + ", ".join(missing))
+
+    _check(
+        report,
+        "documented_columns_match_panel",
+        ERROR,
+        not problems,
+        (
+            f"all {len(actual)} panel columns are documented in configs/columns.yaml"
+            if not problems
+            else "; ".join(problems)
+        ),
+        len(undocumented) + len(missing),
+    )
+
+
+def _bound_violations(
+    panel: pd.DataFrame, family: str
+) -> dict[str, int]:
+    """Count values falling outside the named bound family, per column."""
     violations: dict[str, int] = {}
-    for column, (low, high) in VALUE_BOUNDS.items():
-        if column not in panel.columns:
+    for name, spec in bounded_columns().items():
+        bounds = getattr(spec, family)
+        if bounds is None or name not in panel.columns:
             continue
-        values = pd.to_numeric(panel[column], errors="coerce")
+        low, high = bounds
+        values = pd.to_numeric(panel[name], errors="coerce")
         outside = values.notna() & ((values < low) | (values > high))
         if outside.any():
-            violations[column] = int(outside.sum())
+            violations[name] = int(outside.sum())
+    return violations
 
+
+def check_hard_bounds(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """Physically impossible values indicate a parsing or unit error."""
+    violations = _bound_violations(panel, "hard")
     total = sum(violations.values())
     detail = (
-        f"{len(VALUE_BOUNDS)} bounded columns within plausible ranges"
+        f"{len(bounded_columns())} bounded columns contain no impossible values"
         if not violations
-        else "; ".join(f"{col}: {n:,} rows outside bounds" for col, n in violations.items())
+        else "; ".join(f"{col}: {n:,} impossible values" for col, n in violations.items())
     )
-    _check(report, "values_within_plausible_bounds", ERROR, total == 0, detail, total)
+    _check(report, "values_within_hard_bounds", ERROR, total == 0, detail, total)
+
+
+def check_extreme_values(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """Extreme but possible values, typically thin low-volume county-months.
+
+    These are measured and reported rather than removed: they are real market
+    observations and are exactly the evidence Milestone 2 needs for its county
+    inclusion rule.
+    """
+    violations = _bound_violations(panel, "plausible")
+    total = sum(violations.values())
+    detail = (
+        "no values outside the plausible ranges"
+        if not violations
+        else "; ".join(
+            f"{col}: {n:,} extreme values" for col, n in sorted(violations.items())
+        )
+    )
+    _check(report, "extreme_but_possible_values", WARN, total == 0, detail, total)
 
 
 def check_missingness(panel: pd.DataFrame, report: ValidationReport) -> None:
     """Measure, rather than remove, missing values."""
-    measured = [c for c in VALUE_BOUNDS if c in panel.columns]
+    measured = [c for c in bounded_columns() if c in panel.columns]
     missing = panel[measured].isna().mean().sort_values(ascending=False)
     worst = missing.head(3)
     detail = ", ".join(f"{col} {share:.1%}" for col, share in worst.items())
@@ -285,8 +325,10 @@ def validate_panel(panel: pd.DataFrame, *, context: dict[str, str] | None = None
     check_spine_completeness(panel, report)
     check_date_coverage(panel, report)
     check_prediction_cutoff(panel, report)
+    check_documented_columns(panel, report)
     check_target_source_present(panel, report)
-    check_value_bounds(panel, report)
+    check_hard_bounds(panel, report)
+    check_extreme_values(panel, report)
     check_missingness(panel, report)
     check_source_coverage(panel, report)
     return report

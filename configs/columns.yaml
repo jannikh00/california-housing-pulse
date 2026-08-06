@@ -1,0 +1,227 @@
+# Column registry for the processed county-month panel.
+#
+# This file declares INTENT only: where a column comes from, what it means, its
+# unit, and the ranges it is expected to respect. Everything observed — dtype,
+# null rate, min/max/median — is measured from the built panel by the dictionary
+# generator, so the published data dictionary shows declared and observed values
+# side by side.
+#
+# Two bound families:
+#   hard      values outside this range are physically impossible and indicate a
+#             parsing or unit error. Violations FAIL the build (ERROR).
+#   plausible values outside this range are unusual but real, typically thin
+#             low-volume counties. Violations are counted and reported (WARN).
+#
+# Every column in the panel must appear here and every entry here must appear in
+# the panel; `documented_columns_match_panel` enforces both directions.
+
+schema_version: 1
+
+columns:
+  county_fips:
+    source: census_county_fips
+    meaning: >-
+      Five-character zero-padded county FIPS code. California is state FIPS 06,
+      so every value begins with "06". Carried as text to preserve the leading zero.
+    unit: identifier
+
+  county_name:
+    source: census_county_fips
+    meaning: Official Census county name, for example "Los Angeles County".
+    unit: identifier
+
+  reference_month:
+    source: derived
+    meaning: >-
+      The month a row describes, pinned to the first calendar day. This is month
+      t in the Milestone 0 contract; the forecast horizon ends at t+3.
+    unit: date
+
+  prediction_as_of:
+    source: derived
+    meaning: >-
+      The documented forecast cutoff for this row: the 15th day of the month
+      following the reference month. No feature may use information published
+      after this timestamp.
+    unit: date
+
+  median_sale_price:
+    source: redfin_county
+    meaning: >-
+      Median sale price of all residential properties sold in the county that
+      month. This is the series the MVP target is built from.
+    unit: USD
+    hard: [1000, 50000000]
+    plausible: [20000, 10000000]
+
+  median_list_price:
+    source: redfin_county
+    meaning: Median asking price of listings active that month.
+    unit: USD
+    hard: [1000, 50000000]
+    plausible: [20000, 10000000]
+
+  median_ppsf:
+    source: redfin_county
+    meaning: Median sale price per square foot.
+    unit: USD per square foot
+    hard: [1, 20000]
+    plausible: [20, 5000]
+
+  homes_sold:
+    source: redfin_county
+    meaning: >-
+      Count of homes sold during the month. Doubles as the volume measure behind
+      the Milestone 2 county inclusion rule.
+    unit: count
+    hard: [0, 100000]
+    plausible: [0, 20000]
+
+  pending_sales:
+    source: redfin_county
+    meaning: Count of homes that went under contract during the month.
+    unit: count
+    hard: [0, 100000]
+    plausible: [0, 20000]
+
+  new_listings:
+    source: redfin_county
+    meaning: Count of properties newly listed for sale during the month.
+    unit: count
+    hard: [0, 100000]
+    plausible: [0, 20000]
+
+  inventory:
+    source: redfin_county
+    meaning: Count of active listings available during the month.
+    unit: count
+    hard: [0, 500000]
+    plausible: [0, 100000]
+
+  months_of_supply:
+    source: redfin_county
+    meaning: >-
+      Inventory divided by homes sold. In counties selling only one or two homes
+      in a month this ratio explodes legitimately; such values are extreme, not corrupt.
+    unit: months
+    hard: [0, 1000]
+    plausible: [0, 60]
+
+  median_dom:
+    source: redfin_county
+    meaning: >-
+      Median days on market before sale. A single stale listing in a very small
+      county can push this into the thousands without being an error.
+    unit: days
+    hard: [0, 3650]
+    plausible: [0, 365]
+
+  avg_sale_to_list:
+    source: redfin_county
+    meaning: >-
+      Average ratio of sale price to final list price. Values above 1 mean homes
+      sold above asking.
+    unit: ratio
+    hard: [0.2, 3.0]
+    plausible: [0.7, 1.5]
+
+  sold_above_list:
+    source: redfin_county
+    meaning: Share of sales closing above the final list price.
+    unit: fraction
+    hard: [0.0, 1.0]
+    plausible: [0.0, 1.0]
+
+  price_drops:
+    source: redfin_county
+    meaning: >-
+      Share of active listings with a price reduction during the month. Redfin
+      documents newer listing-history metrics as starting around 2016, so early
+      years are sparse.
+    unit: fraction
+    hard: [0.0, 1.0]
+    plausible: [0.0, 1.0]
+
+  off_market_in_two_weeks:
+    source: redfin_county
+    meaning: Share of listings going off market within two weeks.
+    unit: fraction
+    hard: [0.0, 1.0]
+    plausible: [0.0, 1.0]
+
+  redfin_last_updated:
+    source: redfin_county
+    meaning: >-
+      Timestamp Redfin reports for the row's most recent refresh. Retained as
+      release metadata for the prediction-time contract, not as a feature.
+    unit: timestamp
+
+  mortgage_rate_30y:
+    source: fred_mortgage30us
+    meaning: >-
+      Mean of the weekly Freddie Mac 30-year fixed rate over the month. A national
+      value, so it repeats across all 58 counties in a month.
+    unit: percent
+    hard: [0.5, 25.0]
+    plausible: [2.0, 20.0]
+
+  mortgage_rate_30y_last:
+    source: fred_mortgage30us
+    meaning: Final weekly 30-year fixed rate observed within the month.
+    unit: percent
+    hard: [0.5, 25.0]
+    plausible: [2.0, 20.0]
+
+  mortgage_rate_weeks_observed:
+    source: fred_mortgage30us
+    meaning: >-
+      Number of weekly releases aggregated into the month. Exposed so that
+      partially observed months are visible rather than silently averaged.
+    unit: count
+    hard: [1, 6]
+    plausible: [4, 5]
+
+  mortgage_rate_last_release:
+    source: fred_mortgage30us
+    meaning: Date of the last weekly release included in the monthly aggregate.
+    unit: date
+
+  unemployment_rate:
+    source: bls_lau_california
+    meaning: County unemployment rate, not seasonally adjusted.
+    unit: percent
+    hard: [0.0, 100.0]
+    plausible: [0.0, 30.0]
+
+  unemployed:
+    source: bls_lau_california
+    meaning: Count of unemployed persons in the county labor force.
+    unit: count
+    hard: [0, 5000000]
+    plausible: [0, 1500000]
+
+  employed:
+    source: bls_lau_california
+    meaning: Count of employed persons resident in the county.
+    unit: count
+    hard: [0, 10000000]
+    plausible: [0, 6000000]
+
+  labor_force:
+    source: bls_lau_california
+    meaning: Total county labor force, the sum of employed and unemployed.
+    unit: count
+    hard: [0, 15000000]
+    plausible: [0, 6000000]
+
+  has_redfin:
+    source: derived
+    meaning: >-
+      True when the spine row matched a Redfin observation. False marks a genuine
+      coverage gap rather than an absent row.
+    unit: boolean
+
+  has_unemployment:
+    source: derived
+    meaning: True when the spine row matched a BLS county unemployment observation.
+    unit: boolean
