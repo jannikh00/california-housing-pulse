@@ -106,9 +106,11 @@ def _left_join(
     matched = int(probe["_matched"].fillna(False).sum())
 
     keys_in_panel = panel[on].drop_duplicates()
-    outside = len(source.merge(keys_in_panel, on=on, how="left", indicator=True).query(
-        "_merge == 'left_only'"
-    ))
+    outside = len(
+        source.merge(keys_in_panel, on=on, how="left", indicator=True).query(
+            "_merge == 'left_only'"
+        )
+    )
     report.add_join(name, matched=matched, unmatched_source_rows=outside)
 
     return panel.merge(source, on=on, how="left", validate=validate)

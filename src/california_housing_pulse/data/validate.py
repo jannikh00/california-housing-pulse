@@ -199,11 +199,14 @@ def check_documented_columns(panel: pd.DataFrame, report: ValidationReport) -> N
 
     problems = []
     if undocumented:
-        problems.append(f"{len(undocumented)} column(s) in the panel but not documented: "
-                        + ", ".join(undocumented))
+        problems.append(
+            f"{len(undocumented)} column(s) in the panel but not documented: "
+            + ", ".join(undocumented)
+        )
     if missing:
-        problems.append(f"{len(missing)} documented column(s) absent from the panel: "
-                        + ", ".join(missing))
+        problems.append(
+            f"{len(missing)} documented column(s) absent from the panel: " + ", ".join(missing)
+        )
 
     _check(
         report,
@@ -219,9 +222,7 @@ def check_documented_columns(panel: pd.DataFrame, report: ValidationReport) -> N
     )
 
 
-def _bound_violations(
-    panel: pd.DataFrame, family: str
-) -> dict[str, int]:
+def _bound_violations(panel: pd.DataFrame, family: str) -> dict[str, int]:
     """Count values falling outside the named bound family, per column."""
     violations: dict[str, int] = {}
     for name, spec in bounded_columns().items():
@@ -260,9 +261,7 @@ def check_extreme_values(panel: pd.DataFrame, report: ValidationReport) -> None:
     detail = (
         "no values outside the plausible ranges"
         if not violations
-        else "; ".join(
-            f"{col}: {n:,} extreme values" for col, n in sorted(violations.items())
-        )
+        else "; ".join(f"{col}: {n:,} extreme values" for col, n in sorted(violations.items()))
     )
     _check(report, "extreme_but_possible_values", WARN, total == 0, detail, total)
 
@@ -316,7 +315,9 @@ def check_target_source_present(panel: pd.DataFrame, report: ValidationReport) -
     )
 
 
-def validate_panel(panel: pd.DataFrame, *, context: dict[str, str] | None = None) -> ValidationReport:
+def validate_panel(
+    panel: pd.DataFrame, *, context: dict[str, str] | None = None
+) -> ValidationReport:
     """Run every check over the joined panel."""
     report = ValidationReport(context=context or {})
     check_unique_key(panel, report)
@@ -367,7 +368,7 @@ def write_report(
         "## Panel",
         "",
         f"- rows: **{len(panel):,}**",
-        f"- grain: one row per `(county_fips, reference_month)`",
+        "- grain: one row per `(county_fips, reference_month)`",
         f"- counties: {panel['county_fips'].nunique()}",
         (
             f"- coverage: {panel['reference_month'].min():%Y-%m} to "
@@ -392,9 +393,7 @@ def write_report(
         "|---|---|---|---|",
     ]
     for result in report.results:
-        lines.append(
-            f"| `{result.name}` | {result.severity} | {result.status} | {result.detail} |"
-        )
+        lines.append(f"| `{result.name}` | {result.severity} | {result.status} | {result.detail} |")
 
     lines += [
         "",
