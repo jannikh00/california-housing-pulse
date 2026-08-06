@@ -1,9 +1,15 @@
 """Canonical project paths.
 
-Every path is derived from the installed package location, so the pipeline never
-contains a machine-specific absolute path (Milestone 4 definition of done).
-An operator may override the project root with the CHP_PROJECT_ROOT environment
-variable, which is useful when raw snapshots live on an external volume.
+The project root is located by searching upward for the ``pyproject.toml``
+marker rather than by walking a fixed number of parent directories. That matters
+because the package may be imported either from ``src/`` (editable install) or
+from ``.venv/lib/pythonX.Y/site-packages/`` (non-editable install); a fixed-depth
+walk resolves to a different, wrong directory in the second case, which would
+place the entire ``data/`` tree inside the virtual environment.
+
+An operator may override the root with the ``CHP_PROJECT_ROOT`` environment
+variable, which is useful when raw snapshots live on an external volume. If no
+marker is found and no override is set, this module raises rather than guessing.
 """
 
 from __future__ import annotations
@@ -11,11 +17,38 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# src/california_housing_pulse/paths.py -> repository root is three levels up.
-_PACKAGE_ROOT = Path(__file__).resolve().parent
-_DEFAULT_PROJECT_ROOT = _PACKAGE_ROOT.parent.parent
+PROJECT_MARKER = "pyproject.toml"
 
-PROJECT_ROOT = Path(os.environ.get("CHP_PROJECT_ROOT", _DEFAULT_PROJECT_ROOT)).resolve()
+
+def find_project_root(start: Path | None = None) -> Path:
+    """Return the nearest ancestor of ``start`` that contains ``pyproject.toml``.
+
+    ``CHP_PROJECT_ROOT`` takes precedence when set. Raises ``RuntimeError`` if no
+    marker is found, so a misconfigured environment fails loudly instead of
+    silently writing data to the wrong place.
+    """
+    override = os.environ.get("CHP_PROJECT_ROOT")
+    if override:
+        root = Path(override).expanduser().resolve()
+        if not root.is_dir():
+            raise RuntimeError(
+                f"CHP_PROJECT_ROOT is set to '{override}', which is not a directory."
+            )
+        return root
+
+    origin = Path(start).resolve() if start else Path(__file__).resolve()
+    for candidate in (origin, *origin.parents):
+        if (candidate / PROJECT_MARKER).is_file():
+            return candidate
+
+    raise RuntimeError(
+        f"Could not locate the project root: no '{PROJECT_MARKER}' found in "
+        f"'{origin}' or any parent directory. Set CHP_PROJECT_ROOT to the "
+        "repository root to override."
+    )
+
+
+PROJECT_ROOT = find_project_root()
 
 CONFIG_DIR = PROJECT_ROOT / "configs"
 DATA_DIR = PROJECT_ROOT / "data"
