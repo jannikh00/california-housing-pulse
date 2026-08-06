@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-06T03:19:46+00:00",
+  "entries": {
+    "bls_lau_california": {
+      "source_id": "bls_lau_california",
+      "url": "https://download.bls.gov/pub/time.series/la/la.data.11.California",
+      "path": "data/raw/la.data.11.California",
+      "sha256": "2adabb7a4076e0b55226f6e06f963c0d948bb3de09939374f52640b8102c4790",
+      "bytes": 39819522,
+      "retrieved_at": "2026-08-06T03:19:45+00:00",
+      "acquisition": "fetch",
+      "http_last_modified": "Wed, 29 Jul 2026 14:00:00 GMT",
+      "http_etag": "\"070948b621fdd1:0\""
+    },
+    "census_county_fips": {
+      "source_id": "census_county_fips",
+      "url": "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt",
+      "path": "data/raw/national_county2020.txt",
+      "sha256": "9f6e5f6eb6ac2f5e9a36d5fd01dec77991bddc75118f748a069441a4782970d6",
+      "bytes": 126639,
+      "retrieved_at": "2026-08-06T03:19:46+00:00",
+      "acquisition": "fetch",
+      "http_last_modified": "Mon, 13 Feb 2023 20:11:55 GMT",
+      "http_etag": null
+    },
+    "fred_mortgage30us": {
+      "source_id": "fred_mortgage30us",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MORTGAGE30US",
+      "path": "data/raw/MORTGAGE30US.csv",
+      "sha256": "f01527e9fe649cb181531ce985c77a0a1e7b0ee5b1283ee58a1ad77bf22ba96d",
+      "bytes": 46803,
+      "retrieved_at": "2026-08-06T03:19:04+00:00",
+      "acquisition": "fetch",
+      "http_last_modified": null,
+      "http_etag": null
+    },
+    "redfin_county": {
+      "source_id": "redfin_county",
+      "url": "https://redfin-public-data.s3-us-west-2.amazonaws.com/redfin_market_tracker/county_market_tracker.tsv000.gz",
+      "path": "data/raw/county_market_tracker.tsv000.gz",
+      "sha256": "9470b1c6145dc51721dc717d62ea986a43e1bf2d7fdc57875af2f55e007dd634",
+      "bytes": 241131599,
+      "retrieved_at": "2026-08-06T03:19:04+00:00",
+      "acquisition": "fetch",
+      "http_last_modified": "Tue, 02 Jun 2026 18:16:13 GMT",
+      "http_etag": "\"ccc1d768fe0a7a49c11e444f80bde620\""
+    }
+  }
+}
