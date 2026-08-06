@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-06T03:19:46+00:00",
+  "updated_at": "2026-08-06T03:24:13+00:00",
   "entries": {
     "bls_lau_california": {
       "source_id": "bls_lau_california",
@@ -9,6 +9,17 @@
       "sha256": "2adabb7a4076e0b55226f6e06f963c0d948bb3de09939374f52640b8102c4790",
       "bytes": 39819522,
       "retrieved_at": "2026-08-06T03:19:45+00:00",
+      "acquisition": "fetch",
+      "http_last_modified": "Wed, 29 Jul 2026 14:00:00 GMT",
+      "http_etag": "\"070948b621fdd1:0\""
+    },
+    "bls_lau_series": {
+      "source_id": "bls_lau_series",
+      "url": "https://download.bls.gov/pub/time.series/la/la.series",
+      "path": "data/raw/la.series",
+      "sha256": "3c89ee21038ac42472ec7b5afccfd4380dd0b7f0053bfac9980d7dfbaa8043c0",
+      "bytes": 4086542,
+      "retrieved_at": "2026-08-06T03:24:13+00:00",
       "acquisition": "fetch",
       "http_last_modified": "Wed, 29 Jul 2026 14:00:00 GMT",
       "http_etag": "\"070948b621fdd1:0\""

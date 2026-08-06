@@ -76,13 +76,21 @@ def fetch_source(
             total = response.headers.get("Content-Length")
             expected = int(total) if total and total.isdigit() else None
 
+            # Content-Length describes the bytes on the wire. When the server
+            # applies Content-Encoding, requests transparently decompresses the
+            # stream, so the bytes we write legitimately exceed that figure and
+            # the completeness check does not apply. (BLS serves la.series this
+            # way; Redfin's .gz is served as opaque octet-stream and does not.)
+            content_encoding = response.headers.get("Content-Encoding", "").strip().lower()
+            size_is_comparable = content_encoding in ("", "identity")
+
             written = 0
             with open(partial, "wb") as handle:
                 for chunk in response.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
                     handle.write(chunk)
                     written += len(chunk)
 
-            if expected is not None and written != expected:
+            if expected is not None and size_is_comparable and written != expected:
                 raise FetchError(
                     source, f"incomplete download: expected {expected:,} bytes, got {written:,}"
                 )
