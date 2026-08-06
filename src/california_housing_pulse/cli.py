@@ -52,6 +52,21 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _cmd_build(args: argparse.Namespace) -> int:
+    from .data.pipeline import build
+
+    result = build()
+    if not result.validation.ok:
+        print(
+            f"\nERROR: {len(result.validation.errors)} data-quality check(s) failed; "
+            f"see {result.report_path}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"\nPanel rebuilt: {len(result.panel):,} rows. See {result.report_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="chp",
@@ -72,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser("verify", help="check raw files against recorded hashes")
     verify.set_defaults(func=_cmd_verify)
+
+    build_cmd = subparsers.add_parser(
+        "build", help="rebuild staged tables, the joined panel, and the data-quality report"
+    )
+    build_cmd.set_defaults(func=_cmd_build)
 
     return parser
 
