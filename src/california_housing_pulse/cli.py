@@ -67,6 +67,32 @@ def _cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_test(args: argparse.Namespace) -> int:
+    """Run the test suite in-process so `chp all` needs no extra tooling."""
+    import pytest
+
+    from .paths import PROJECT_ROOT
+
+    return int(pytest.main([str(PROJECT_ROOT / "tests"), "-q"]))
+
+
+def _cmd_all(args: argparse.Namespace) -> int:
+    """The full documented rebuild: fetch, build, test."""
+    steps = (
+        ("fetch", _cmd_fetch, argparse.Namespace(source=None, force=False)),
+        ("build", _cmd_build, argparse.Namespace()),
+        ("test", _cmd_test, argparse.Namespace()),
+    )
+    for name, handler, step_args in steps:
+        print(f"\n=== chp {name} " + "=" * (60 - len(name)))
+        code = handler(step_args)
+        if code != 0:
+            print(f"\nERROR: step '{name}' failed with exit code {code}.", file=sys.stderr)
+            return code
+    print("\nAll steps completed.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="chp",
@@ -92,6 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
         "build", help="rebuild staged tables, the joined panel, and the data-quality report"
     )
     build_cmd.set_defaults(func=_cmd_build)
+
+    test_cmd = subparsers.add_parser("test", help="run the test suite")
+    test_cmd.set_defaults(func=_cmd_test)
+
+    all_cmd = subparsers.add_parser("all", help="fetch, build, then test — the full rebuild")
+    all_cmd.set_defaults(func=_cmd_all)
 
     return parser
 

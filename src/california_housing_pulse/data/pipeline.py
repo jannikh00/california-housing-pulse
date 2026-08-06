@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..io import write_parquet
 from ..paths import SNAPSHOT_DIR, ensure_dirs, relative
+from .dictionary import write_dictionary
 from .panel import build_panel
 from .sources import SourceRegistry, load_registry
 from .staging import build_staged_tables
@@ -23,6 +24,7 @@ class BuildResult:
     panel: pd.DataFrame
     validation: ValidationReport
     report_path: str
+    dictionary_path: str = ""
 
 
 def write_snapshots(tables: dict[str, pd.DataFrame]) -> list[str]:
@@ -57,8 +59,9 @@ def build(
     validation = validate_panel(panel)
     print(validation.summary())
 
-    print("\n[4/4] Writing snapshots and report …")
+    print("\n[4/4] Writing snapshots, report and data dictionary …")
     report_path = ""
+    dictionary_path = ""
     if write:
         for path in write_snapshots(tables):
             print(f"  snapshot {path}")
@@ -69,5 +72,12 @@ def build(
             join_summary=join_report.summary(),
         )
         print(f"  report {report_path}")
+        dictionary_path = write_dictionary(panel)
+        print(f"  dictionary {dictionary_path}")
 
-    return BuildResult(panel=panel, validation=validation, report_path=report_path)
+    return BuildResult(
+        panel=panel,
+        validation=validation,
+        report_path=report_path,
+        dictionary_path=dictionary_path,
+    )
