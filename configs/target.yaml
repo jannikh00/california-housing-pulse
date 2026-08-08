@@ -1,0 +1,90 @@
+# The frozen target contract.
+#
+# This file is the single definition of what the project predicts. It was frozen
+# at the Milestone 2 decision gate on 9 August 2026 and must not be edited to
+# improve model performance: `tests/test_target.py::test_contract_matches_the_frozen_values`
+# asserts every value below and fails the build if one drifts.
+#
+# The chain, for a county at reference month t:
+#
+#   1. price_smoothed(t)  = mean of median_sale_price over months [t-2, t]
+#   2. growth_yoy(t)      = 100 * ln( price_smoothed(t) / price_smoothed(t-12) )
+#   3. target_dg(t)       = growth_yoy(t+3) - growth_yoy(t)          [percentage points]
+#   4. target_label(t)    = cooling / stable / heating by +/- tau
+#
+# Steps 1-2 use only months <= t, so growth_yoy is a legitimate prediction-time
+# feature. Step 3 reaches forward by design: it is the label, observable only at
+# t+3, and no feature may derive from it.
+
+schema_version: 1
+
+frozen:
+  status: frozen
+  date: "2026-08-09"
+  milestone: 2
+  rationale: >-
+    Milestone 0 permitted one threshold adjustment, and only to avoid a nearly
+    empty directional class. Measured prevalence under this contract is 36.6%
+    cooling / 31.2% stable / 32.2% heating, so the adjustment condition never
+    triggered and tau stays at the contracted 2.0 percentage points.
+
+target:
+  name: target_dg
+  label_name: target_label
+  price_column: median_sale_price
+
+  smoothing:
+    # Three-month rolling mean, as contracted in Milestone 0. min_periods equals
+    # the window: a partially observed window yields NA rather than a value
+    # computed from fewer months, so coverage gaps stay visible.
+    window_months: 3
+    statistic: mean
+    min_periods: 3
+
+  growth:
+    # Log growth rather than simple percentage change. The target is a
+    # *difference of two growth rates*, and under simple percentages a +50% and a
+    # -33% move are the same economic event with different magnitudes, which a
+    # symmetric +/- tau would then treat inconsistently. Log growth is symmetric
+    # and cut the measured spread of target_dg from 16.3 to 9.7 percentage points
+    # without costing a single usable row.
+    method: log
+    lag_months: 12
+    unit: percentage_points
+
+  horizon_months: 3
+
+  thresholds:
+    tau: 2.0
+    # cooling: dg <= -tau     stable: -tau < dg < tau     heating: dg >= tau
+    cooling: cooling
+    stable: stable
+    heating: heating
+
+inclusion:
+  # A county's median monthly homes_sold across the whole panel. Counties below
+  # the floor cannot support a meaningful median sale price: the four excluded
+  # counties sell 1-5 homes in a typical month, and their target_dg standard
+  # deviation runs from 24 to 107 percentage points against 3.6 for the largest
+  # counties. That is thin-market arithmetic, not market signal.
+  statistic: median_homes_sold
+  min_homes_sold: 10
+  excluded_tier: excluded
+
+  # Exhaustive and ordered by lower bound. `max: null` means unbounded above.
+  volume_tiers:
+    - name: excluded
+      min: 0
+      max: 9
+    - name: thin
+      min: 10
+      max: 25
+    - name: small
+      min: 26
+      max: 100
+    - name: mid
+      min: 101
+      max: 500
+    - name: large
+      min: 501
+      max: null
