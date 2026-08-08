@@ -12,6 +12,7 @@ import pytest
 
 from california_housing_pulse.data.columns import load_columns
 from california_housing_pulse.data.panel import build_panel
+from california_housing_pulse.features.target import add_target
 
 
 @pytest.fixture
@@ -99,8 +100,15 @@ def staged_tables(counties: pd.DataFrame, months: list[pd.Timestamp]) -> dict[st
 
 @pytest.fixture
 def panel(staged_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """The panel as the pipeline publishes it: joined, then target-enriched.
+
+    Four months is far too short to produce a label, so every target column here
+    is null by construction. That is deliberate — it exercises the path where the
+    lead-in swallows the whole panel, which is also what the earliest real months
+    look like.
+    """
     built, _ = build_panel(staged_tables, write=False)
-    return built
+    return add_target(built)
 
 
 @pytest.fixture
