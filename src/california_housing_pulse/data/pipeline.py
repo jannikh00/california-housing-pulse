@@ -6,8 +6,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from ..features.target import TargetReport, add_target, modeling_rows, summarize
 from ..io import write_parquet
-from ..paths import SNAPSHOT_DIR, ensure_dirs, relative
+from ..paths import PROCESSED_DIR, SNAPSHOT_DIR, ensure_dirs, relative
 from .dictionary import write_dictionary
 from .panel import build_panel
 from .sources import SourceRegistry, load_registry
@@ -25,6 +26,8 @@ class BuildResult:
     validation: ValidationReport
     report_path: str
     dictionary_path: str = ""
+    target: TargetReport | None = None
+    modeling_path: str = ""
 
 
 def write_snapshots(tables: dict[str, pd.DataFrame]) -> list[str]:
@@ -51,18 +54,31 @@ def build(
     for summary in staging_summaries:
         print(summary)
 
-    print("\n[2/4] Joining onto a complete county-month spine …")
-    panel, join_report = build_panel(tables, write=write)
+    print("\n[2/5] Joining onto a complete county-month spine …")
+    panel, join_report = build_panel(tables, write=False)
     print(join_report.summary())
 
-    print("\n[3/4] Validating …")
+    # The target is attached before the panel is written and before validation,
+    # so the published panel, the data dictionary and the quality checks all
+    # describe the same 36-column artifact.
+    print("\n[3/5] Constructing the frozen target …")
+    panel = add_target(panel)
+    target_report = summarize(panel)
+    print(target_report.summary())
+
+    print("\n[4/5] Validating …")
     validation = validate_panel(panel)
     print(validation.summary())
 
-    print("\n[4/4] Writing snapshots, report and data dictionary …")
+    print("\n[5/5] Writing panel, snapshots, report and data dictionary …")
     report_path = ""
     dictionary_path = ""
+    modeling_path = ""
     if write:
+        write_parquet(panel, PROCESSED_DIR / "county_month_panel.parquet")
+        modeling_path = relative(
+            write_parquet(modeling_rows(panel), PROCESSED_DIR / "target_panel.parquet")
+        )
         for path in write_snapshots(tables):
             print(f"  snapshot {path}")
         report_path = write_report(
@@ -70,6 +86,7 @@ def build(
             validation,
             staging_summaries=staging_summaries,
             join_summary=join_report.summary(),
+            target_summary=target_report.summary(),
         )
         print(f"  report {report_path}")
         dictionary_path = write_dictionary(panel)
@@ -80,4 +97,6 @@ def build(
         validation=validation,
         report_path=report_path,
         dictionary_path=dictionary_path,
+        target=target_report,
+        modeling_path=modeling_path,
     )

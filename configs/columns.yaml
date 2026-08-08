@@ -225,3 +225,85 @@ columns:
     source: derived
     meaning: True when the spine row matched a BLS county unemployment observation.
     unit: boolean
+
+  # ---------------------------------------------------------------------------
+  # Target construction (Milestone 2). The definition these columns execute is
+  # frozen in configs/target.yaml; this section only documents the results.
+  #
+  # The percentage-point columns carry deliberately wide hard bounds and tight
+  # plausible bounds. Growth measured on a county selling a handful of homes a
+  # month genuinely swings by tens of percentage points, so those values are
+  # extreme rather than impossible: they must be counted and reported (WARN),
+  # not fail the build. They are also the direct evidence for the inclusion rule.
+  # ---------------------------------------------------------------------------
+
+  homes_sold_median:
+    source: derived
+    meaning: >-
+      The county's median monthly homes_sold across the whole panel. This is the
+      inclusion statistic: counties below 10 cannot support a meaningful median
+      sale price and are excluded from modelling.
+    unit: count
+    hard: [0, 100000]
+    plausible: [0, 20000]
+
+  volume_tier:
+    source: derived
+    meaning: >-
+      County volume band derived from homes_sold_median — excluded, thin, small,
+      mid or large. Retained as a reporting dimension because directional class
+      prevalence varies sharply across it.
+    unit: identifier
+
+  is_included:
+    source: derived
+    meaning: >-
+      True when the county clears the volume floor in configs/target.yaml. False
+      marks a documented exclusion, kept as a visible row rather than deleted.
+    unit: boolean
+
+  price_smoothed:
+    source: derived
+    meaning: >-
+      Three-month rolling mean of median_sale_price ending at the reference
+      month. NA when any month in the window is missing, so coverage gaps stay
+      visible instead of being smoothed over.
+    unit: USD
+    hard: [1000, 50000000]
+    plausible: [20000, 10000000]
+
+  growth_yoy:
+    source: derived
+    meaning: >-
+      Log growth of price_smoothed against the same month a year earlier,
+      expressed in percentage points. Uses only months up to the reference
+      month, so it is available at prediction time.
+    unit: percentage points
+    hard: [-1000, 1000]
+    plausible: [-60, 60]
+
+  target_dg:
+    source: derived
+    meaning: >-
+      The modelling target: growth_yoy three months ahead minus growth_yoy now,
+      in percentage points. Observable only at t+3, so no feature may derive
+      from it.
+    unit: percentage points
+    hard: [-1000, 1000]
+    plausible: [-60, 60]
+
+  target_label:
+    source: derived
+    meaning: >-
+      Directional class from target_dg at the frozen threshold of 2.0 percentage
+      points — cooling, stable or heating. NA where the target is unobservable,
+      because an unobservable outcome is not a prediction of no change.
+    unit: identifier
+
+  has_target:
+    source: derived
+    meaning: >-
+      True when target_dg is observable for this row. False marks the lead-in
+      months needed for smoothing and the year-over-year lag, and the final
+      three months where the outcome has not happened yet.
+    unit: boolean
