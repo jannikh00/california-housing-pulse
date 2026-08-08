@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
+from ..features.target import load_contract, modeling_rows
 from ..paths import REPORTS_DIR, relative
 from .columns import bounded_columns, load_columns
 from .normalize import CALIFORNIA_STATE_FIPS, month_range
@@ -315,6 +316,119 @@ def check_target_source_present(panel: pd.DataFrame, report: ValidationReport) -
     )
 
 
+def check_target_horizon_within_coverage(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """No row may claim a label whose outcome month lies outside the panel.
+
+    ``target_dg`` reads three months forward. If a row at the very end of the
+    coverage window carried a label, the forward value would have come from
+    somewhere other than an observed future month — a shift misalignment or a
+    silently filled gap. This is the check that would catch it.
+    """
+    if "has_target" not in panel.columns:
+        return
+    contract = load_contract()
+    last_month = panel["reference_month"].max()
+    horizon = pd.DateOffset(months=contract.horizon_months)
+    too_late = panel["has_target"] & (panel["reference_month"] + horizon > last_month)
+    _check(
+        report,
+        "target_horizon_within_coverage",
+        ERROR,
+        not too_late.any(),
+        (
+            f"every labelled row resolves at or before {last_month:%Y-%m}, "
+            f"{contract.horizon_months} months ahead"
+            if not too_late.any()
+            else f"{int(too_late.sum()):,} labelled rows resolve past the coverage window"
+        ),
+        int(too_late.sum()),
+    )
+
+
+def check_target_leadin_is_unlabelled(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """The smoothing window and year-over-year lag must consume real months.
+
+    ``growth_yoy`` cannot exist before ``window - 1 + lag`` months have elapsed.
+    A value appearing earlier would mean a rolling or shift operation ran over
+    the county boundary, mixing one county's history into another's.
+    """
+    if "growth_yoy" not in panel.columns:
+        return
+    contract = load_contract()
+    lead_in = contract.smoothing_window - 1 + contract.growth_lag_months
+    first_valid = panel["reference_month"].min() + pd.DateOffset(months=lead_in)
+    premature = panel["growth_yoy"].notna() & (panel["reference_month"] < first_valid)
+    _check(
+        report,
+        "target_leadin_months_unlabelled",
+        ERROR,
+        not premature.any(),
+        (
+            f"no growth value before {first_valid:%Y-%m}, as the {lead_in}-month "
+            "lead-in requires"
+            if not premature.any()
+            else f"{int(premature.sum()):,} rows carry growth inside the lead-in window"
+        ),
+        int(premature.sum()),
+    )
+
+
+def check_target_class_prevalence(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """No directional class may be unusably sparse — the Milestone 2 gate."""
+    if "target_label" not in panel.columns:
+        return
+    contract = load_contract()
+    model = modeling_rows(panel)
+    if not len(model):
+        _check(report, "target_class_prevalence", WARN, False, "no modelling rows produced", 0)
+        return
+
+    shares = model["target_label"].value_counts(normalize=True)
+    detail = ", ".join(f"{name} {shares.get(name, 0.0):.1%}" for name in contract.label_names)
+    smallest = min(float(shares.get(name, 0.0)) for name in contract.label_names)
+    _check(
+        report,
+        "target_class_prevalence",
+        WARN,
+        smallest >= 0.05,
+        (
+            f"{len(model):,} modelling rows at tau=+/-{contract.tau:g} — {detail}"
+            if smallest >= 0.05
+            else f"smallest class is only {smallest:.1%} of rows — {detail}"
+        ),
+        len(model),
+    )
+
+
+def check_target_inclusion_rule(panel: pd.DataFrame, report: ValidationReport) -> None:
+    """Report which counties the volume floor removes, and how much data goes."""
+    if "is_included" not in panel.columns:
+        return
+    contract = load_contract()
+    excluded = (
+        panel.loc[~panel["is_included"], ["county_fips", "county_name"]]
+        .drop_duplicates()
+        .sort_values("county_fips")
+    )
+    names = ", ".join(excluded["county_name"].astype(str))
+    dropped_rows = int((~panel["is_included"]).sum())
+    _check(
+        report,
+        "target_inclusion_rule",
+        WARN,
+        len(excluded) == 0,
+        (
+            "no county falls below the volume floor"
+            if len(excluded) == 0
+            else (
+                f"{len(excluded)} counties below median homes_sold "
+                f"{contract.min_homes_sold:g} excluded ({dropped_rows:,} rows): {names}"
+            )
+        ),
+        dropped_rows,
+    )
+
+
 def validate_panel(
     panel: pd.DataFrame, *, context: dict[str, str] | None = None
 ) -> ValidationReport:
@@ -332,6 +446,10 @@ def validate_panel(
     check_extreme_values(panel, report)
     check_missingness(panel, report)
     check_source_coverage(panel, report)
+    check_target_horizon_within_coverage(panel, report)
+    check_target_leadin_is_unlabelled(panel, report)
+    check_target_inclusion_rule(panel, report)
+    check_target_class_prevalence(panel, report)
     return report
 
 
@@ -351,6 +469,7 @@ def write_report(
     *,
     staging_summaries: list[str] | None = None,
     join_summary: str | None = None,
+    target_summary: str | None = None,
 ) -> str:
     """Render the data-quality report to ``reports/data_quality.md``."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -385,6 +504,19 @@ def write_report(
 
     if join_summary:
         lines += ["## Join accounting", "", "```text", join_summary, "```", ""]
+
+    if target_summary:
+        lines += [
+            "## Target construction",
+            "",
+            f"Frozen contract: {load_contract().describe()}.",
+            "See `configs/target.yaml` for the full definition and rationale.",
+            "",
+            "```text",
+            target_summary,
+            "```",
+            "",
+        ]
 
     lines += [
         "## Checks",
