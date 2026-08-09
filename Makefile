@@ -15,13 +15,14 @@ export UV_NO_EDITABLE := 1
 
 RUN := $(UV) run --reinstall-package $(PACKAGE)
 
-.PHONY: all setup fetch build test verify lint clean help
+.PHONY: all setup fetch build eda test verify lint clean help
 
 help:
 	@echo "make setup   - create .venv and install dependencies"
-	@echo "make all     - fetch, build, and test (the full documented rebuild)"
+	@echo "make all     - fetch, build, eda, and test (the full documented rebuild)"
 	@echo "make fetch   - download raw sources and record provenance"
 	@echo "make build   - rebuild staged tables, panel, report, and dictionary"
+	@echo "make eda     - render the exploratory analysis report and figures"
 	@echo "make test    - run the test suite"
 	@echo "make verify  - check raw snapshots against recorded hashes"
 	@echo "make lint    - run ruff"
@@ -38,6 +39,9 @@ fetch: setup
 
 build: setup
 	$(RUN) chp build
+
+eda: setup
+	$(RUN) chp eda
 
 test: setup
 	$(RUN) chp test

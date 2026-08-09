@@ -364,8 +364,7 @@ def check_target_leadin_is_unlabelled(panel: pd.DataFrame, report: ValidationRep
         ERROR,
         not premature.any(),
         (
-            f"no growth value before {first_valid:%Y-%m}, as the {lead_in}-month "
-            "lead-in requires"
+            f"no growth value before {first_valid:%Y-%m}, as the {lead_in}-month lead-in requires"
             if not premature.any()
             else f"{int(premature.sum()):,} rows carry growth inside the lead-in window"
         ),

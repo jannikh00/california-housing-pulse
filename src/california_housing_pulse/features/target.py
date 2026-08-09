@@ -169,9 +169,7 @@ def year_over_year_growth(
             f"Unsupported growth method '{contract.growth_method}'; "
             "the frozen contract specifies 'log'."
         )
-    lagged = smoothed.groupby(panel["county_fips"], sort=False).shift(
-        contract.growth_lag_months
-    )
+    lagged = smoothed.groupby(panel["county_fips"], sort=False).shift(contract.growth_lag_months)
     ratio = smoothed / lagged
     # A non-positive ratio cannot be logged. Prices are bounded above zero by the
     # column registry, so this guards against a future source change rather than

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .paths import ensure_dirs
+from .paths import ensure_dirs, relative
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -67,6 +67,27 @@ def _cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_eda(args: argparse.Namespace) -> int:
+    from .eda import build_eda
+    from .io import read_parquet
+    from .paths import PROCESSED_DIR
+
+    panel_path = PROCESSED_DIR / "county_month_panel.parquet"
+    if not panel_path.exists():
+        print(
+            f"\nERROR: {relative(panel_path)} not found. Run `chp build` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print("Rendering exploratory analysis …")
+    report_path, figure_paths = build_eda(read_parquet(panel_path))
+    for path in figure_paths:
+        print(f"  figure {path}")
+    print(f"  report {report_path}")
+    return 0
+
+
 def _cmd_test(args: argparse.Namespace) -> int:
     """Run the test suite in-process so `chp all` needs no extra tooling."""
     import pytest
@@ -77,10 +98,11 @@ def _cmd_test(args: argparse.Namespace) -> int:
 
 
 def _cmd_all(args: argparse.Namespace) -> int:
-    """The full documented rebuild: fetch, build, test."""
+    """The full documented rebuild: fetch, build, eda, test."""
     steps = (
         ("fetch", _cmd_fetch, argparse.Namespace(source=None, force=False)),
         ("build", _cmd_build, argparse.Namespace()),
+        ("eda", _cmd_eda, argparse.Namespace()),
         ("test", _cmd_test, argparse.Namespace()),
     )
     for name, handler, step_args in steps:
@@ -119,10 +141,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     build_cmd.set_defaults(func=_cmd_build)
 
+    eda_cmd = subparsers.add_parser(
+        "eda", help="render the exploratory analysis report and figures"
+    )
+    eda_cmd.set_defaults(func=_cmd_eda)
+
     test_cmd = subparsers.add_parser("test", help="run the test suite")
     test_cmd.set_defaults(func=_cmd_test)
 
-    all_cmd = subparsers.add_parser("all", help="fetch, build, then test — the full rebuild")
+    all_cmd = subparsers.add_parser("all", help="fetch, build, eda, then test — the full rebuild")
     all_cmd.set_defaults(func=_cmd_all)
 
     return parser
