@@ -21,6 +21,16 @@ import pandas as pd
 from ..data.columns import bounded_columns
 from ..features.target import TargetContract, load_contract
 
+# Schema of the outlier table, declared so an empty result keeps its columns.
+OUTLIER_COLUMNS = (
+    "column",
+    "plausible_low",
+    "plausible_high",
+    "extreme_values",
+    "share",
+    "counties",
+)
+
 # Calendar months, for seasonality tables.
 MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -195,7 +205,10 @@ def feature_outliers(panel: pd.DataFrame) -> pd.DataFrame:
                 "counties": ", ".join(str(name_) for name_ in top),
             }
         )
-    return pd.DataFrame(rows).sort_values("extreme_values", ascending=False, ignore_index=True)
+    # An empty result must still carry the schema: callers index by column name,
+    # and a bare DataFrame() would turn "nothing was extreme" into a KeyError.
+    table = pd.DataFrame(rows, columns=OUTLIER_COLUMNS)
+    return table.sort_values("extreme_values", ascending=False, ignore_index=True)
 
 
 def seasonality(model: pd.DataFrame) -> pd.DataFrame:
