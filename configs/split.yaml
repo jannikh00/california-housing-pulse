@@ -1,0 +1,106 @@
+# The frozen chronological split.
+#
+# Frozen at the Milestone 3 decision gate on 11 August 2026, BEFORE any model was
+# fitted and before the test set was read. `tests/test_split.py` asserts every
+# value below, including the row counts, so a boundary cannot drift unnoticed.
+#
+# The plan's rule, restated because it is the one that is easiest to break by
+# accident: if a newer Redfin bulk file shifts the panel, this split must be
+# recomputed *before* the test set is touched, never after. Re-deriving it once
+# results are known would turn the holdout into a tuning set.
+#
+# ---------------------------------------------------------------------------
+# Why the windows have gaps between them
+# ---------------------------------------------------------------------------
+# The label at month t is growth_yoy(t+3) - growth_yoy(t), so it is not
+# observable until three months later. With contiguous windows, the last three
+# training rows would carry outcomes that only resolve inside the validation
+# period:
+#
+#   train ...2023-11 | embargo 2023-12..2024-02 | validation 2024-03...
+#                     \_ the three months whose labels would otherwise
+#                        resolve after validation had already begun
+#
+# This is not feature leakage — configs/features.yaml and its audit rule that
+# out separately. It is leakage into *model selection*, and the fix is to
+# embargo one horizon at each boundary. It costs 324 of 8,053 otherwise usable
+# rows, which is a cheap premium on the claim the whole project rests on.
+#
+# ---------------------------------------------------------------------------
+# Why eligibility is a date and not a completeness test
+# ---------------------------------------------------------------------------
+# Requiring every one of the 58 features to be non-null sounds stricter and is
+# actually worse. Redfin's coverage of small counties is sporadic, and a single
+# absent month blanks a twelve-month rolling window, so the rule deletes rows in
+# proportion to how thin a county is. Measured on this panel it removed Del Norte
+# from the training set entirely and left Colusa with 22 of 117 months, cutting
+# thin-tier training rows by 35%. Those are precisely the counties Milestone 2
+# Decisions 2 and 3 said to keep visible and report on.
+#
+# So the two causes are separated. The lead-in is structural — before 2014-03 the
+# history a twelve-month window needs does not exist, and those rows are dropped.
+# A gap after that is a source coverage hole, left as NA here and filled inside
+# the model pipeline, where the fill is fitted on training data alone. It affects
+# 0.41% of feature cells.
+
+schema_version: 1
+
+frozen:
+  status: frozen
+  date: "2026-08-11"
+  milestone: 3
+  rationale: >-
+    Boundaries follow the plan's rule — the most recent 12 usable months as an
+    untouched test set, the preceding 12 for validation, everything earlier for
+    training — evaluated against the labelled window, which ends 2026-02. The
+    embargo then removes the final three months of the training and validation
+    windows. No model had been fitted when these dates were written.
+
+eligibility:
+  # Milestone 2's volume floor and label observability are inherited from
+  # configs/target.yaml via the is_included and has_target columns.
+  require_included: true
+  require_observable_target: true
+
+  lead_in:
+    # The deepest feature reads 14 months of history (unemployment_rate__diff12:
+    # a 12-month change on a series lagged two months for publication delay).
+    # The panel begins 2012-01 and growth_yoy begins 2013-03, which places the
+    # first month with a full feature vector at 2014-03.
+    first_month: "2014-03"
+    deepest_feature_reach_months: 14
+
+  feature_gaps:
+    # false: residual NAs survive into the model pipeline and are imputed there,
+    # on training-set statistics only. See the rationale in the header.
+    require_complete: false
+    handled_by: pipeline_median_imputation
+
+boundaries:
+  train:
+    start: null
+    end: "2023-11"
+  validation:
+    start: "2024-03"
+    end: "2024-11"
+  test:
+    start: "2025-03"
+    end: "2026-02"
+
+embargo:
+  months: 3
+  rationale: >-
+    One forecast horizon. Rows in 2023-12..2024-02 and 2024-12..2025-02 are
+    eligible but assigned to no split, so that every training label resolves at
+    or before validation begins and every validation label at or before the test
+    window begins.
+
+# Measured when the split was frozen. The guard test recomputes these from the
+# built feature matrix and fails on any difference, so a change in the data or
+# in the feature specification cannot silently reshape the split.
+expected_rows:
+  train: 6271
+  validation: 486
+  test: 648
+  embargo: 324
+  eligible: 7729
