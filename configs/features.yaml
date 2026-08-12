@@ -19,6 +19,17 @@
 # so effective lag L = release_lag_months + offset. Nothing in this file can
 # express a feature that reaches past the cutoff.
 #
+# `release_lag_months` is a claim, so it is checked rather than trusted.
+# `publication_delay_days` records how long after the END of a month that month's
+# value actually becomes public, and the audit in `features/spec.py` asserts
+#
+#     end_of_month(t - release_lag_months) + publication_delay_days
+#         <= prediction_as_of(t)
+#
+# for every month in the panel. The two numbers come from different places — one
+# is the lag we chose, the other is how the publisher behaves — so the audit can
+# fail, and it does fail if `bls_lau_california` is set to 1 month.
+#
 # ---------------------------------------------------------------------------
 # Not here, on purpose
 # ---------------------------------------------------------------------------
@@ -37,9 +48,17 @@ schema_version: 1
 # ---------------------------------------------------------------------------
 # Publication lags
 # ---------------------------------------------------------------------------
+# The forecast cutoff each row is judged against. The panel already carries this
+# as `prediction_as_of`; stating the rule here lets the audit run on any month,
+# and a test asserts the rule still reproduces the column.
+prediction_cutoff:
+  months_after_reference: 1
+  day_of_month: 15
+
 sources:
   redfin_county:
     release_lag_months: 0
+    publication_delay_days: 7
     rationale: >-
       Redfin refreshes the bulk county file weekly; month t appears in the first
       days of month t+1, ahead of the 15th cutoff. Note the separate revision
@@ -48,6 +67,7 @@ sources:
 
   fred_mortgage30us:
     release_lag_months: 0
+    publication_delay_days: 0
     rationale: >-
       Freddie Mac publishes the 30-year fixed rate weekly, on the Thursday of the
       week it describes. Every weekly release inside month t is known before
@@ -55,6 +75,7 @@ sources:
 
   bls_lau_california:
     release_lag_months: 2
+    publication_delay_days: 50
     rationale: >-
       County LAUS estimates trail the reference month by roughly six to eight
       weeks, so month t is published around the middle of month t+2 — after
@@ -64,6 +85,7 @@ sources:
 
   derived:
     release_lag_months: 0
+    publication_delay_days: 7
     rationale: >-
       Columns computed from other panel columns inherit the timing of their
       inputs. `growth_yoy` is built only from months <= t of the Redfin price

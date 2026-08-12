@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 from ..paths import CONFIG_DIR
@@ -27,11 +28,42 @@ FEATURES_CONFIG = CONFIG_DIR / "features.yaml"
 
 @dataclass(frozen=True)
 class SourceTiming:
-    """When a source's values become knowable, relative to the reference month."""
+    """When a source's values become knowable, relative to the reference month.
+
+    Two independent numbers. ``release_lag_months`` is the lag *we chose* and
+    every feature on this source inherits it. ``publication_delay_days`` is how
+    the publisher *actually behaves* — how long after a month ends its value
+    appears. :meth:`FeatureContract.audit_publication` checks the first against
+    the second, which is only a meaningful test because they are not the same
+    fact written twice.
+    """
 
     source_id: str
     release_lag_months: int
+    publication_delay_days: int
     rationale: str
+
+    def published_at(self, reference_month: pd.Series | pd.Timestamp):
+        """When the value describing ``reference_month`` became public."""
+        month_end = pd.to_datetime(reference_month) + pd.offsets.MonthEnd(0)
+        return month_end + pd.Timedelta(days=self.publication_delay_days)
+
+
+@dataclass(frozen=True)
+class PredictionCutoff:
+    """The documented forecast cutoff: no feature may use later information."""
+
+    months_after_reference: int
+    day_of_month: int
+
+    def for_month(self, reference_month: pd.Series | pd.Timestamp):
+        """The cutoff timestamp for a reference month."""
+        shifted = pd.to_datetime(reference_month) + pd.DateOffset(
+            months=self.months_after_reference
+        )
+        if isinstance(shifted, pd.Series):
+            return shifted.dt.normalize() + pd.Timedelta(days=self.day_of_month - 1)
+        return shifted.normalize() + pd.Timedelta(days=self.day_of_month - 1)
 
 
 @dataclass(frozen=True)
@@ -92,9 +124,42 @@ class FeatureContract:
     """The whole parsed specification."""
 
     sources: dict[str, SourceTiming]
+    cutoff: PredictionCutoff
     missing: dict[str, MissingPolicy]
     excluded_columns: dict[str, str]
     features: tuple[FeatureSpec, ...] = field(default_factory=tuple)
+
+    def audit_publication(self, reference_months) -> pd.DataFrame:
+        """Check every feature's newest input against the forecast cutoff.
+
+        For a feature with effective lag *L*, the newest month it reads is
+        ``t - L``. That value became public at ``published_at(t - L)``, and the
+        forecast for month *t* is made at ``cutoff.for_month(t)``. The feature is
+        safe when the first is at or before the second, in *every* month — a lag
+        that works on average is not a lag that works.
+
+        Returns one row per (feature, source) with the tightest margin observed,
+        in days. A negative margin is a leak.
+        """
+        months = pd.DatetimeIndex(pd.to_datetime(pd.Series(list(reference_months))).unique())
+        cutoffs = self.cutoff.for_month(pd.Series(months))
+
+        rows = []
+        for spec in self.features:
+            timing = self.sources[spec.source]
+            newest_input = months - pd.DateOffset(months=spec.effective_lag)
+            published = timing.published_at(pd.Series(newest_input))
+            margin_days = (cutoffs - published).dt.total_seconds() / 86400.0
+            rows.append(
+                {
+                    "feature": spec.name,
+                    "source": spec.source,
+                    "effective_lag_months": spec.effective_lag,
+                    "min_margin_days": float(margin_days.min()),
+                    "leaks": bool((margin_days < 0).any()),
+                }
+            )
+        return pd.DataFrame(rows)
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -143,10 +208,16 @@ def load_feature_contract(config_path: Path | None = None) -> FeatureContract:
         source_id: SourceTiming(
             source_id=source_id,
             release_lag_months=int(entry["release_lag_months"]),
+            publication_delay_days=int(entry["publication_delay_days"]),
             rationale=str(entry.get("rationale", "")).strip(),
         )
         for source_id, entry in raw["sources"].items()
     }
+
+    cutoff = PredictionCutoff(
+        months_after_reference=int(raw["prediction_cutoff"]["months_after_reference"]),
+        day_of_month=int(raw["prediction_cutoff"]["day_of_month"]),
+    )
 
     missing_raw = dict(raw.get("missing") or {})
     excluded = {
@@ -213,6 +284,7 @@ def load_feature_contract(config_path: Path | None = None) -> FeatureContract:
 
     return FeatureContract(
         sources=sources,
+        cutoff=cutoff,
         missing=missing,
         excluded_columns=excluded,
         features=tuple(features),
