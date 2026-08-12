@@ -1,0 +1,235 @@
+# The feature specification for Milestone 3.
+#
+# This file declares WHICH features exist and HOW FAR BACK each one must reach.
+# The transforms themselves are Python (`features/transforms.py`) because they are
+# logic; the instantiation list is here because it is a spec a reviewer should be
+# able to diff. `reports/feature_availability.md` is generated from this file, so
+# the published availability table cannot drift from what the code builds.
+#
+# ---------------------------------------------------------------------------
+# The leakage rule
+# ---------------------------------------------------------------------------
+# Every row carries `prediction_as_of` = the 15th of the month after its
+# reference month. That is the documented forecast cutoff: no feature may use
+# information published after it.
+#
+# A source's `release_lag_months` is the smallest k such that the value for month
+# (t - k) was certainly published on or before prediction_as_of(t). Every feature
+# gets its source's release lag applied on top of whatever `offset` it declares,
+# so effective lag L = release_lag_months + offset. Nothing in this file can
+# express a feature that reaches past the cutoff.
+#
+# ---------------------------------------------------------------------------
+# Not here, on purpose
+# ---------------------------------------------------------------------------
+# * Calendar-month dummies. Milestone 2 Decision 6: the year-over-year
+#   construction already differences seasonality out, and no monthly mean of the
+#   target sits two standard errors from zero.
+# * `price_drops`. 18.8% missing because Redfin's listing-history metrics begin
+#   around 2016; any feature on it silently truncates the training window.
+# * `homes_sold_median` / `volume_tier` as model inputs. Both are computed over
+#   the *whole* panel, test window included, so using them as features would leak.
+#   `volume_tier` stays a reporting dimension only; county size enters the model
+#   as `homes_sold__rollmean12`, a trailing window that leaks nothing.
+
+schema_version: 1
+
+# ---------------------------------------------------------------------------
+# Publication lags
+# ---------------------------------------------------------------------------
+sources:
+  redfin_county:
+    release_lag_months: 0
+    rationale: >-
+      Redfin refreshes the bulk county file weekly; month t appears in the first
+      days of month t+1, ahead of the 15th cutoff. Note the separate revision
+      risk recorded in the Milestone 2 memo: recent months cure upward in later
+      vintages. A snapshot cannot fix that, and no lag choice would.
+
+  fred_mortgage30us:
+    release_lag_months: 0
+    rationale: >-
+      Freddie Mac publishes the 30-year fixed rate weekly, on the Thursday of the
+      week it describes. Every weekly release inside month t is known before
+      month t ends, so the monthly aggregate is available at the cutoff.
+
+  bls_lau_california:
+    release_lag_months: 2
+    rationale: >-
+      County LAUS estimates trail the reference month by roughly six to eight
+      weeks, so month t is published around the middle of month t+2 — after
+      prediction_as_of(t), which falls on the 15th of t+1. Month t-1 lands close
+      enough to the cutoff to be a coin flip. Two months is the nearest lag that
+      is safe in every month rather than most of them.
+
+  derived:
+    release_lag_months: 0
+    rationale: >-
+      Columns computed from other panel columns inherit the timing of their
+      inputs. `growth_yoy` is built only from months <= t of the Redfin price
+      series, so it carries the Redfin lag.
+
+# ---------------------------------------------------------------------------
+# Missing-data policy, per family
+# ---------------------------------------------------------------------------
+missing:
+  bls_lau_california:
+    method: ffill_within_county
+    max_gap_months: 3
+    indicator: unemployment_imputed
+    rationale: >-
+      Exactly one month is absent — 2025-10, across all 58 counties. That is a
+      single skipped national release, not a county-level signal, and it falls
+      inside the test window. Carrying the previous month forward within each
+      county is the assumption a forecaster would actually have made in real
+      time; `unemployment_imputed` flags every row where it happened so the
+      choice is visible in the results rather than buried. max_gap_months caps
+      how far a value may be carried, so a future multi-year outage fails loudly
+      instead of propagating a stale number across the panel.
+
+  excluded_columns:
+    - column: price_drops
+      rationale: >-
+        18.8% missing, structurally: Redfin's listing-history metrics start
+        around 2016. Carrying values backward would invent data and dropping the
+        rows would cost three years of training window.
+
+# ---------------------------------------------------------------------------
+# The features
+# ---------------------------------------------------------------------------
+# Each entry expands to one column per value in its parameter list. Generated
+# names are `<column>__<transform><param>`, plus `_o<offset>` when a feature
+# declares an extra offset beyond its source's release lag.
+#
+# Transforms, with L = release_lag_months + offset, all computed within county on
+# the month-complete spine:
+#
+#   lag(k)        x(t-L-k)
+#   diff(h)       x(t-L) - x(t-L-h)                     same units as x
+#   log_diff(h)   100 * ln( x(t-L) / x(t-L-h) )         percent, needs x > 0
+#   rollmean(w)   mean of x over [t-L-w+1, t-L]
+#   rollstd(w)    sample SD of x over the same window
+#   reltrend(w)   x(t-L) / rollmean(w) - 1              unitless
+#
+# `reltrend` and `log_diff` exist because this model pools 54 counties of wildly
+# different size: Los Angeles sells four orders of magnitude more homes than Del
+# Norte, so a raw count is not comparable across rows. Ratio and growth forms are.
+
+features:
+  # -- Price momentum. growth_yoy is the same quantity the target differences,
+  #    so its level and recent changes are the natural persistence signal.
+  - column: growth_yoy
+    source: derived
+    family: momentum
+    transforms:
+      - {transform: lag, params: [0, 1, 3, 6, 12]}
+      - {transform: diff, params: [1, 3, 6, 12]}
+      - {transform: rollstd, params: [6, 12]}
+
+  # -- Price level dynamics, in growth form so counties are comparable.
+  - column: median_sale_price
+    source: redfin_county
+    family: price
+    transforms:
+      - {transform: log_diff, params: [1, 3, 12]}
+      - {transform: reltrend, params: [6, 12]}
+
+  - column: median_ppsf
+    source: redfin_county
+    family: price
+    transforms:
+      - {transform: log_diff, params: [3, 12]}
+
+  # -- The list side leads the sale side: asking prices move before closings do.
+  - column: median_list_price
+    source: redfin_county
+    family: price
+    transforms:
+      - {transform: log_diff, params: [3, 12]}
+
+  # -- Volume and supply. Levels are meaningless across counties; ratios are not.
+  - column: homes_sold
+    source: redfin_county
+    family: volume
+    transforms:
+      - {transform: rollmean, params: [12]}
+      - {transform: log_diff, params: [3, 12]}
+      - {transform: reltrend, params: [12]}
+
+  - column: new_listings
+    source: redfin_county
+    family: volume
+    transforms:
+      - {transform: log_diff, params: [3, 12]}
+      - {transform: reltrend, params: [12]}
+
+  - column: pending_sales
+    source: redfin_county
+    family: volume
+    transforms:
+      - {transform: log_diff, params: [3, 12]}
+
+  - column: inventory
+    source: redfin_county
+    family: supply
+    transforms:
+      - {transform: log_diff, params: [3, 12]}
+      - {transform: reltrend, params: [12]}
+
+  - column: months_of_supply
+    source: redfin_county
+    family: supply
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
+
+  # -- Market tightness. Already unitless or in comparable units, so levels are
+  #    legitimate features here in a way they are not for counts.
+  - column: median_dom
+    source: redfin_county
+    family: tightness
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
+      - {transform: reltrend, params: [12]}
+
+  - column: avg_sale_to_list
+    source: redfin_county
+    family: tightness
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
+
+  - column: sold_above_list
+    source: redfin_county
+    family: tightness
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
+
+  - column: off_market_in_two_weeks
+    source: redfin_county
+    family: tightness
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
+
+  # -- Financing. Milestone 2 Decision 5: prevalence across rate *bands* is
+  #    non-monotonic, so the level alone encodes the era rather than the
+  #    financing environment. The changes are the point; the level is kept as one
+  #    column so the model can still condition on it.
+  - column: mortgage_rate_30y
+    source: fred_mortgage30us
+    family: macro
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [1, 3, 6, 12]}
+      - {transform: rollstd, params: [6]}
+
+  # -- Labour market. Two-month release lag applied on top of everything below.
+  - column: unemployment_rate
+    source: bls_lau_california
+    family: macro
+    transforms:
+      - {transform: lag, params: [0]}
+      - {transform: diff, params: [3, 12]}
