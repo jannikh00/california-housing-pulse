@@ -67,6 +67,51 @@ def _cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_features(args: argparse.Namespace) -> int:
+    from .features.build import build_features, write_availability_report
+    from .io import read_parquet, write_parquet
+    from .paths import PROCESSED_DIR
+
+    panel_path = PROCESSED_DIR / "county_month_panel.parquet"
+    if not panel_path.exists():
+        print(
+            f"\nERROR: {relative(panel_path)} not found. Run `chp build` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Built on the full panel, never on the filtered modelling rows: the lead-in
+    # history a feature reads back into lives in the months the filter removes.
+    print("Building features …")
+    features, report = build_features(read_parquet(panel_path))
+    print(report.summary())
+
+    print(f"  {_audit_publication(features)}")
+    write_parquet(features, PROCESSED_DIR / "features.parquet")
+    print(f"  report {write_availability_report(features, report)}")
+    return 0
+
+
+def _audit_publication(features) -> str:
+    """Re-run the leakage audit on the real months, not only in the test suite.
+
+    The tests check a synthetic panel. This checks the months actually shipped,
+    so a future data refresh that shifts the window cannot quietly invalidate the
+    lag choices frozen in ``configs/features.yaml``.
+    """
+    from .features.spec import load_feature_contract
+
+    audit = load_feature_contract().audit_publication(features["reference_month"])
+    leaking = audit.loc[audit["leaks"]]
+    if len(leaking):
+        raise RuntimeError(
+            f"{len(leaking)} feature(s) read past the forecast cutoff: "
+            f"{', '.join(leaking['feature'].head(5))}"
+        )
+    margin = audit["min_margin_days"].min()
+    return f"publication audit: {len(audit)} features clear the cutoff by >= {margin:.0f} days"
+
+
 def _cmd_eda(args: argparse.Namespace) -> int:
     from .eda import build_eda
     from .io import read_parquet
@@ -102,6 +147,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
     steps = (
         ("fetch", _cmd_fetch, argparse.Namespace(source=None, force=False)),
         ("build", _cmd_build, argparse.Namespace()),
+        ("features", _cmd_features, argparse.Namespace()),
         ("eda", _cmd_eda, argparse.Namespace()),
         ("test", _cmd_test, argparse.Namespace()),
     )
@@ -140,6 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
         "build", help="rebuild staged tables, the joined panel, and the data-quality report"
     )
     build_cmd.set_defaults(func=_cmd_build)
+
+    features_cmd = subparsers.add_parser(
+        "features", help="build the leakage-safe feature matrix and availability table"
+    )
+    features_cmd.set_defaults(func=_cmd_features)
 
     eda_cmd = subparsers.add_parser(
         "eda", help="render the exploratory analysis report and figures"

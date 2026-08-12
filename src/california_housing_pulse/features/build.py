@@ -101,9 +101,7 @@ def apply_missing_policy(
     filled: dict[str, int] = {}
 
     for policy in contract.missing.values():
-        columns = [
-            spec.column for spec in contract.features if spec.source == policy.source_id
-        ]
+        columns = [spec.column for spec in contract.features if spec.source == policy.source_id]
         columns = list(dict.fromkeys(columns))
         if not columns:
             continue
@@ -130,37 +128,9 @@ def apply_missing_policy(
     return out, filled
 
 
-def _indicator_specs(contract: FeatureContract) -> list[FeatureSpec]:
-    """Synthesise a spec for each missing-data indicator.
-
-    The indicator is a feature like any other and must carry its source's
-    publication lag: at reference month *t* the model reads the unemployment
-    value from ``t - 2``, so what it needs to know is whether *that* month was
-    filled, not whether *t* was.
-    """
-    specs = []
-    for policy in contract.missing.values():
-        if not policy.indicator:
-            continue
-        timing = contract.sources[policy.source_id]
-        specs.append(
-            FeatureSpec(
-                name=policy.indicator,
-                column=policy.indicator,
-                source=policy.source_id,
-                family="quality",
-                transform="lag",
-                param=0,
-                offset=0,
-                release_lag_months=timing.release_lag_months,
-            )
-        )
-    return specs
-
-
-def all_specs(contract: FeatureContract) -> list[FeatureSpec]:
-    """Declared features followed by the synthesised missingness indicators."""
-    return [*contract.features, *_indicator_specs(contract)]
+def all_specs(contract: FeatureContract) -> tuple[FeatureSpec, ...]:
+    """Declared features followed by the missing-data indicators."""
+    return contract.all_specs()
 
 
 def build_features(
@@ -293,7 +263,13 @@ def _render_availability(
         rationale = " ".join(timing.rationale.split())
         lines.append(f"| `{timing.source_id}` | {timing.release_lag_months} mo | {rationale} |")
 
-    lines += ["", "## Missing-data policy", "", "| Column / source | Policy | Why |", "|---|---|---|"]
+    lines += [
+        "",
+        "## Missing-data policy",
+        "",
+        "| Column / source | Policy | Why |",
+        "|---|---|---|",
+    ]
     for policy in contract.missing.values():
         rationale = " ".join(policy.rationale.split())
         detail = f"{policy.method}, max {policy.max_gap_months} mo"

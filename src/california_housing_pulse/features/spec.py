@@ -129,6 +129,38 @@ class FeatureContract:
     excluded_columns: dict[str, str]
     features: tuple[FeatureSpec, ...] = field(default_factory=tuple)
 
+    def indicator_specs(self) -> tuple[FeatureSpec, ...]:
+        """A spec for each missing-data indicator the policies produce.
+
+        An indicator is a model input like any other, so it lives in the contract
+        rather than being invented by the builder: that way it is audited,
+        listed in the availability table, and carries its source's publication
+        lag. At month *t* the model reads unemployment from *t-2*, so what it
+        needs to know is whether *that* month was filled, not whether *t* was.
+        """
+        specs = []
+        for policy in self.missing.values():
+            if not policy.indicator:
+                continue
+            timing = self.sources[policy.source_id]
+            specs.append(
+                FeatureSpec(
+                    name=policy.indicator,
+                    column=policy.indicator,
+                    source=policy.source_id,
+                    family="quality",
+                    transform="lag",
+                    param=0,
+                    offset=0,
+                    release_lag_months=timing.release_lag_months,
+                )
+            )
+        return tuple(specs)
+
+    def all_specs(self) -> tuple[FeatureSpec, ...]:
+        """Declared features followed by the missing-data indicators."""
+        return (*self.features, *self.indicator_specs())
+
     def audit_publication(self, reference_months) -> pd.DataFrame:
         """Check every feature's newest input against the forecast cutoff.
 
@@ -145,7 +177,7 @@ class FeatureContract:
         cutoffs = self.cutoff.for_month(pd.Series(months))
 
         rows = []
-        for spec in self.features:
+        for spec in self.all_specs():
             timing = self.sources[spec.source]
             newest_input = months - pd.DateOffset(months=spec.effective_lag)
             published = timing.published_at(pd.Series(newest_input))

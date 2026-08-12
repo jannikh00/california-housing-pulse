@@ -111,9 +111,7 @@ def log_diff(panel: pd.DataFrame, values: pd.Series, param: int, *, lag_months: 
 def rollmean(panel: pd.DataFrame, values: pd.Series, param: int, *, lag_months: int) -> pd.Series:
     """Mean over the ``param`` months ending at ``t - lag``."""
     shifted = _shift(panel, values, lag_months)
-    return _grouped(panel, shifted).transform(
-        lambda s: s.rolling(param, min_periods=param).mean()
-    )
+    return _grouped(panel, shifted).transform(lambda s: s.rolling(param, min_periods=param).mean())
 
 
 def rollstd(panel: pd.DataFrame, values: pd.Series, param: int, *, lag_months: int) -> pd.Series:
