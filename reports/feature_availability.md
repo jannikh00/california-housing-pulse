@@ -22,7 +22,7 @@ Each row of the panel carries `prediction_as_of`, the 15th of the month after it
 
 ## Features
 
-58 columns. The deepest reads 14 months of history, which is the feature-side lead-in: no row earlier than that many months into the panel can have a complete feature vector.
+60 columns. The deepest reads 14 months of history, which is the feature-side lead-in: no row earlier than that many months into the panel can have a complete feature vector.
 
 | Feature | Family | Source | Definition | Reads back | First available | Null rate |
 |---|---|---|---|---|---|---|
@@ -37,6 +37,8 @@ Each row of the panel carries `prediction_as_of`, the 15th of the month after it
 | `growth_yoy__diff12` | momentum | `derived` | growth_yoy: change from t-12 to t-0 | 12 mo | 2014-03 | 17.8% |
 | `growth_yoy__rollstd6` | momentum | `derived` | growth_yoy: 6-month SD ending t-0 | 5 mo | 2013-08 | 14.5% |
 | `growth_yoy__rollstd12` | momentum | `derived` | growth_yoy: 12-month SD ending t-0 | 11 mo | 2014-02 | 18.4% |
+| `growth_yoy__rollmean6` | momentum | `derived` | growth_yoy: 6-month mean ending t-0 | 5 mo | 2013-08 | 14.5% |
+| `growth_yoy__rollmean12` | momentum | `derived` | growth_yoy: 12-month mean ending t-0 | 11 mo | 2014-02 | 18.4% |
 | `median_sale_price__log_diff1` | price | `redfin_county` | median_sale_price: log growth from t-1 to t-0 | 1 mo | 2012-02 | 2.2% |
 | `median_sale_price__log_diff3` | price | `redfin_county` | median_sale_price: log growth from t-3 to t-0 | 3 mo | 2012-04 | 3.3% |
 | `median_sale_price__log_diff12` | price | `redfin_county` | median_sale_price: log growth from t-12 to t-0 | 12 mo | 2013-01 | 8.4% |
@@ -87,8 +89,8 @@ Each row of the panel carries `prediction_as_of`, the 15th of the month after it
 
 ## Coverage
 
-features: 58 columns over 10,034 panel rows
+features: 60 columns over 10,034 panel rows
   deepest feature reads 14 months of history
-  families: macro 9, momentum 11, price 9, quality 1, supply 6, tightness 13, volume 9
+  families: macro 9, momentum 13, price 9, quality 1, supply 6, tightness 13, volume 9
   carried forward: unemployment_imputed 58
   complete feature rows: 7,359 of 8,322 modelling rows (from 2014-03)

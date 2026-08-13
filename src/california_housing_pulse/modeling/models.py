@@ -84,7 +84,8 @@ class LearnedModel:
         # and the probabilistic metrics would fail on a missing key rather than
         # on the real problem.
         for label in CLASS_ORDER:
-            out.setdefault(f"prob_{label}", 0.0)
+            if f"prob_{label}" not in out.columns:
+                out[f"prob_{label}"] = 0.0
         return out
 
     def coefficients(self) -> pd.DataFrame:
