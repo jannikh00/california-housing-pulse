@@ -100,9 +100,7 @@ def _statistic(metric: str) -> Callable[[pd.DataFrame], float]:
 
     def compute(frame: pd.DataFrame) -> float:
         if metric in ("mae", "rmse", "mean_error", "medae"):
-            return magnitude_metrics(frame["target_dg"], frame["predicted_dg"]).get(
-                metric, np.nan
-            )
+            return magnitude_metrics(frame["target_dg"], frame["predicted_dg"]).get(metric, np.nan)
         return directional_metrics(frame["target_label"], frame["predicted_label"]).get(
             metric, np.nan
         )

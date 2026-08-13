@@ -69,9 +69,7 @@ class LearnedModel:
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         matrix = frame[self.features]
         if self.kind == "magnitude":
-            predicted = pd.Series(
-                self.pipeline.predict(matrix), index=frame.index, dtype="float64"
-            )
+            predicted = pd.Series(self.pipeline.predict(matrix), index=frame.index, dtype="float64")
             return pd.DataFrame(
                 {"predicted_dg": predicted, "predicted_label": classify(predicted)},
                 index=frame.index,

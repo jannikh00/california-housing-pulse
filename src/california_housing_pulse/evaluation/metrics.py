@@ -107,9 +107,7 @@ def per_class_metrics(actual: pd.Series, predicted: pd.Series) -> pd.DataFrame:
 
         precision = true_positive / predicted_positive if predicted_positive else 0.0
         recall = true_positive / actual_positive if actual_positive else 0.0
-        f1 = (
-            2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-        )
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
         rows.append(
             {
                 "class": label,
