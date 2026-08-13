@@ -147,6 +147,11 @@ features:
       - {transform: lag, params: [0, 1, 3, 6, 12]}
       - {transform: diff, params: [1, 3, 6, 12]}
       - {transform: rollstd, params: [6, 12]}
+      # The county's own recent average momentum. Beyond being a feature, this is
+      # what makes a mean-reversion baseline expressible: "growth far above its
+      # own twelve-month norm falls back" is a different hypothesis from
+      # "recent change continues", and the two can then be compared directly.
+      - {transform: rollmean, params: [6, 12]}
 
   # -- Price level dynamics, in growth form so counties are comparable.
   - column: median_sale_price
