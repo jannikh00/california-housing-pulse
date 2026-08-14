@@ -225,8 +225,11 @@ def evaluate(
         result.update(magnitude_metrics(frame[actual], frame[predicted]))
     if predicted_label in frame.columns:
         directional = directional_metrics(frame[actual_label], frame[predicted_label])
-        # `n` is shared; keep the magnitude count if one is already present.
-        result.setdefault("n", directional["n"])
+        # `n` is shared. A classifier's rows still carry a `predicted_dg` column
+        # — full of NA, because the predictions of every model are concatenated
+        # into one frame — so the magnitude branch above will have set n to 0.
+        # Take whichever count actually scored something.
+        result["n"] = max(int(result.get("n", 0) or 0), directional["n"])
         result.update({k: v for k, v in directional.items() if k != "n"})
     if probability_prefix:
         columns = [f"{probability_prefix}{label}" for label in CLASS_ORDER]
