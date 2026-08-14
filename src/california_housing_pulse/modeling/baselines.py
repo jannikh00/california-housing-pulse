@@ -45,6 +45,10 @@ MOMENTUM_CHANGE = "growth_yoy__diff3"
 MOMENTUM_LEVEL = "growth_yoy__lag0"
 MOMENTUM_NORM = "growth_yoy__rollmean12"
 
+# b(t): the three-month growth from t-12 to t-9, observable at t. See the
+# decomposition documented in configs/features.yaml and in BaseEffect below.
+BASE_EFFECT = "price_smoothed__log_diff3_o9"
+
 
 def classify(values: pd.Series, contract: TargetContract | None = None) -> pd.Series:
     """Map a predicted magnitude onto a directional class at the frozen tau.
@@ -141,6 +145,41 @@ class MeanReversion(Baseline):
         return self._with_labels(-k * self._gap(frame).fillna(0.0))
 
 
+class BaseEffect(Baseline):
+    """``Dg = drift - b(t)`` — the mechanically knowable part, and nothing else.
+
+    The honest bar for this project. Because
+    ``target_dg(t) = f(t) - b(t)`` exactly, and ``b(t)`` is observable at
+    prediction time, a forecaster who knows only the *average* forward growth
+    and subtracts the base effect already removes about 13% of zero-change's
+    error on the test window — without any view about the housing market at all.
+
+    Comparing a model to ``zero_change`` therefore flatters it. Comparing to this
+    baseline asks the question that matters: does the model know anything about
+    ``f(t)``, the part that had not happened yet?
+
+    ``drift`` is the mean forward three-month growth on the training split,
+    recovered as ``mean(target_dg + b)`` since ``f = Dg + b``.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(name="base_effect", kind="both")
+
+    def fit(self, train: pd.DataFrame) -> BaseEffect:
+        forward = train["target_dg"].astype("float64") + self._base(train)
+        drift = forward.mean()
+        self.params = {"drift": float(drift) if np.isfinite(drift) else 0.0}
+        return self
+
+    @staticmethod
+    def _base(frame: pd.DataFrame) -> pd.Series:
+        return frame[BASE_EFFECT].astype("float64")
+
+    def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        drift = self.params.get("drift", 0.0)
+        return self._with_labels(drift - self._base(frame).fillna(0.0))
+
+
 class MajorityClass(Baseline):
     """Always predict the most common training label — the directional floor."""
 
@@ -173,7 +212,14 @@ class MajorityClass(Baseline):
 
 def naive_baselines() -> list[Baseline]:
     """Every naive predictor, in the order the results table reports them."""
-    return [ZeroChange(), Persistence(), MeanReversion(), MajorityClass()]
+    return [ZeroChange(), BaseEffect(), Persistence(), MeanReversion(), MajorityClass()]
+
+
+# The comparison the headline result is stated against. `zero_change` is the
+# conventional bar and is still reported, but it is the weaker claim: see the
+# decomposition in BaseEffect.
+PRIMARY_MAGNITUDE_BASELINE = "base_effect"
+PRIMARY_DIRECTIONAL_BASELINE = "majority_class"
 
 
 def climatology(train: pd.DataFrame) -> float:

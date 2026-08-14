@@ -153,6 +153,32 @@ features:
       # "recent change continues", and the two can then be compared directly.
       - {transform: rollmean, params: [6, 12]}
 
+  # -- The base effect: the single most informative thing about this target, and
+  #    the reason its results need reading carefully.
+  #
+  #    The target decomposes exactly (verified to machine precision) as
+  #
+  #        target_dg(t) = 100*ln( P(t+3)/P(t) )  -  100*ln( P(t-9)/P(t-12) )
+  #                     =        f(t)            -        b(t)
+  #
+  #    where P is price_smoothed. f(t) is the unknown forward three-month growth;
+  #    b(t) is the three-month growth that happened between t-12 and t-9 and is
+  #    fully observable at prediction time. On the test window corr(dg, -b) is
+  #    0.707, so roughly half the target's variance is knowable in advance for
+  #    reasons that have nothing to do with forecasting a housing market.
+  #
+  #    An offset of 9 on top of the zero release lag makes log_diff3 read exactly
+  #    t-12 -> t-9, which is b(t). It is declared explicitly rather than left for
+  #    the model to reassemble out of growth_yoy lags, so that the mechanical
+  #    component is visible in the coefficients, has its own naive baseline, and
+  #    can be netted out of the reported skill.
+  - column: price_smoothed
+    source: derived
+    family: base_effect
+    offset: 9
+    transforms:
+      - {transform: log_diff, params: [3]}
+
   # -- Price level dynamics, in growth form so counties are comparable.
   - column: median_sale_price
     source: redfin_county
