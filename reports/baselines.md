@@ -160,10 +160,10 @@ Milestone 2 Decision 2 required this. Dispersion in the target is largely a func
 
 | volume_tier | n | accuracy | macro_f1 | balanced_accuracy |
 |---|---|---|---|---|
-| thin | 0 | 0.750 | 0.615 | 0.618 |
-| small | 0 | 0.655 | 0.631 | 0.636 |
-| mid | 0 | 0.583 | 0.591 | 0.603 |
-| large | 0 | 0.655 | 0.491 | 0.552 |
+| thin | 72 | 0.750 | 0.615 | 0.618 |
+| small | 168 | 0.655 | 0.631 | 0.636 |
+| mid | 240 | 0.583 | 0.591 | 0.603 |
+| large | 168 | 0.655 | 0.491 | 0.552 |
 
 ## By period
 
@@ -183,11 +183,11 @@ The definition of done requires variation across time rather than one aggregate.
 
 | period | n | accuracy | macro_f1 |
 |---|---|---|---|
-| 2025Q1 | 0 | 0.556 | 0.535 |
-| 2025Q2 | 0 | 0.636 | 0.643 |
-| 2025Q3 | 0 | 0.673 | 0.661 |
-| 2025Q4 | 0 | 0.642 | 0.642 |
-| 2026Q1 | 0 | 0.630 | 0.568 |
+| 2025Q1 | 54 | 0.556 | 0.535 |
+| 2025Q2 | 162 | 0.636 | 0.643 |
+| 2025Q3 | 162 | 0.673 | 0.661 |
+| 2025Q4 | 162 | 0.642 | 0.642 |
+| 2026Q1 | 108 | 0.630 | 0.568 |
 
 ## Confusion matrices — test split
 
