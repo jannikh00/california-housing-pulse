@@ -26,11 +26,17 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..evaluation import bootstrap as bootstrap_mod
-from ..evaluation.metrics import evaluate
+from ..evaluation.metrics import evaluate, forward_growth_metrics, skill_score
 from ..features.build import feature_names
 from ..features.spec import load_feature_contract
 from ..paths import MODELS_DIR, PROCESSED_DIR, relative
-from .baselines import climatology, naive_baselines
+from .baselines import (
+    BASE_EFFECT,
+    PRIMARY_DIRECTIONAL_BASELINE,
+    PRIMARY_MAGNITUDE_BASELINE,
+    climatology,
+    naive_baselines,
+)
 from .models import (
     LearnedModel,
     Selection,
@@ -55,7 +61,16 @@ MODEL_CONFIG_PATH = MODELS_DIR / "baseline_config.json"
 
 # Carried onto every prediction row so the results can be sliced by tier and by
 # period without re-joining anything.
-CONTEXT = ["county_fips", "county_name", "reference_month", "volume_tier", "split"]
+CONTEXT = [
+    "county_fips",
+    "county_name",
+    "reference_month",
+    "volume_tier",
+    "split",
+    # b(t), carried so the forward-growth diagnostic and the base_effect
+    # baseline both read it from the predictions frame rather than re-joining.
+    BASE_EFFECT,
+]
 TRUTH = ["target_dg", "target_label"]
 
 
@@ -81,9 +96,46 @@ class RunResult:
         """Pooled metrics for every model on one split, primary metrics first."""
         rows = []
         for name, part in self.scored(split).groupby("model", sort=False):
-            rows.append({"model": name, **evaluate(part)})
+            rows.append({"model": name, **evaluate(part), **forward_growth_metrics(part)})
         table = pd.DataFrame(rows)
         return table.sort_values("mae", ignore_index=True) if "mae" in table else table
+
+    def skill(self, split: str = TEST) -> pd.DataFrame:
+        """Each model against the naive bar, on both primary metrics.
+
+        The magnitude comparison is against ``base_effect`` rather than
+        ``zero_change``: the target is part-knowable by construction, and a
+        percentage measured against zero-change credits the model for arithmetic
+        it did not do. Both are shown so the difference is visible.
+        """
+        table = self.table(split).set_index("model")
+        if PRIMARY_MAGNITUDE_BASELINE not in table.index:
+            return pd.DataFrame()
+
+        naive_mae = table.loc[PRIMARY_MAGNITUDE_BASELINE, "mae"]
+        zero_mae = table.loc["zero_change", "mae"] if "zero_change" in table.index else float("nan")
+        naive_f1 = (
+            table.loc[PRIMARY_DIRECTIONAL_BASELINE, "macro_f1"]
+            if PRIMARY_DIRECTIONAL_BASELINE in table.index
+            else float("nan")
+        )
+
+        rows = []
+        for model in table.index:
+            rows.append(
+                {
+                    "model": model,
+                    "mae": table.loc[model, "mae"],
+                    "skill_vs_base_effect": skill_score(table.loc[model, "mae"], naive_mae),
+                    "skill_vs_zero_change": skill_score(table.loc[model, "mae"], zero_mae),
+                    "macro_f1": table.loc[model, "macro_f1"],
+                    "macro_f1_vs_majority": table.loc[model, "macro_f1"] - naive_f1,
+                    "corr_forward": table.loc[model, "corr_forward"]
+                    if "corr_forward" in table.columns
+                    else float("nan"),
+                }
+            )
+        return pd.DataFrame(rows)
 
 
 def _predictions_for(name: str, frame: pd.DataFrame, predicted: pd.DataFrame) -> pd.DataFrame:

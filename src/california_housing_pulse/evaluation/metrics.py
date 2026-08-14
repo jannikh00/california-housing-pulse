@@ -239,6 +239,63 @@ def evaluate(
     return result
 
 
+def forward_growth_metrics(
+    frame: pd.DataFrame,
+    *,
+    base: str = "price_smoothed__log_diff3_o9",
+    actual: str = "target_dg",
+    predicted: str = "predicted_dg",
+) -> dict[str, float]:
+    """Skill on ``f(t)``, the part of the target that had not happened yet.
+
+    The target decomposes exactly as ``Dg(t) = f(t) - b(t)``, where ``b`` is the
+    base effect and is observable at prediction time. Two consequences, and the
+    second is the one worth reporting:
+
+    *MAE is unchanged.* Adding the same ``b`` to prediction and outcome leaves
+    every error identical, so ``mae_forward`` equals ``mae``. It is returned
+    anyway, because seeing the two agree is what makes the next line credible.
+
+    *Correlation is not unchanged.* ``corr(predicted_dg, target_dg)`` is inflated
+    because both sides contain ``-b``, a large shared component that the model
+    did not have to predict. ``corr_forward`` removes it and is therefore the
+    honest measure of how much the model knows about the future.
+    """
+    if base not in frame.columns or predicted not in frame.columns:
+        return {}
+
+    b = frame[base].astype("float64")
+    actual_dg = frame[actual].astype("float64")
+    predicted_dg = frame[predicted].astype("float64")
+    usable = b.notna() & actual_dg.notna() & predicted_dg.notna()
+    if not usable.any():
+        return {}
+
+    b, actual_dg, predicted_dg = b[usable], actual_dg[usable], predicted_dg[usable]
+    actual_f = actual_dg + b
+    predicted_f = predicted_dg + b
+
+    return {
+        "n_forward": int(usable.sum()),
+        "mae_forward": float((predicted_f - actual_f).abs().mean()),
+        "sd_forward": float(actual_f.std()),
+        "corr_dg": _correlation(predicted_dg, actual_dg),
+        "corr_forward": _correlation(predicted_f, actual_f),
+    }
+
+
+def _correlation(left: pd.Series, right: pd.Series) -> float:
+    """Pearson correlation, or NA when either side is constant.
+
+    ``zero_change`` predicts the same number every time, so its correlation with
+    anything is undefined rather than zero. Returning NA says that; letting numpy
+    divide by a zero standard deviation says it with a warning and a nan.
+    """
+    if left.std() == 0 or right.std() == 0:
+        return np.nan
+    return float(np.corrcoef(left, right)[0, 1])
+
+
 def by_group(frame: pd.DataFrame, group: str | list[str], **kwargs) -> pd.DataFrame:
     """Evaluate within each group — the only aggregation this project uses.
 
