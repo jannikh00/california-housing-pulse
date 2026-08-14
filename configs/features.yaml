@@ -112,7 +112,8 @@ missing:
   excluded_columns:
     - column: price_drops
       rationale: >-
-        18.8% missing, structurally: Redfin's listing-history metrics start
+        Missing for 23.9% of panel rows and 18.8% of modelling rows, and missing
+        structurally rather than at random: Redfin's listing-history metrics start
         around 2016. Carrying values backward would invent data and dropping the
         rows would cost three years of training window.
 

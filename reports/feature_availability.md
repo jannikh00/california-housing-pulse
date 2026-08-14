@@ -18,7 +18,7 @@ Each row of the panel carries `prediction_as_of`, the 15th of the month after it
 | Column / source | Policy | Why |
 |---|---|---|
 | `bls_lau_california` | ffill_within_county, max 3 mo, flagged by `unemployment_imputed` | Exactly one month is absent — 2025-10, across all 58 counties. That is a single skipped national release, not a county-level signal, and it falls inside the test window. Carrying the previous month forward within each county is the assumption a forecaster would actually have made in real time; `unemployment_imputed` flags every row where it happened so the choice is visible in the results rather than buried. max_gap_months caps how far a value may be carried, so a future multi-year outage fails loudly instead of propagating a stale number across the panel. |
-| `price_drops` | excluded | 18.8% missing, structurally: Redfin's listing-history metrics start around 2016. Carrying values backward would invent data and dropping the rows would cost three years of training window. |
+| `price_drops` | excluded | Missing for 23.9% of panel rows and 18.8% of modelling rows, and missing structurally rather than at random: Redfin's listing-history metrics start around 2016. Carrying values backward would invent data and dropping the rows would cost three years of training window. |
 
 ## Features
 
