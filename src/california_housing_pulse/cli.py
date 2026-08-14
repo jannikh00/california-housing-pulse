@@ -133,6 +133,27 @@ def _cmd_eda(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_baselines(args: argparse.Namespace) -> int:
+    from .evaluation.report import build_report
+    from .io import read_parquet
+    from .modeling.run import run
+    from .paths import PROCESSED_DIR
+
+    features_path = PROCESSED_DIR / "features.parquet"
+    if not features_path.exists():
+        print(
+            f"\nERROR: {relative(features_path)} not found. Run `chp features` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = run(read_parquet(features_path), resamples=args.resamples)
+    for label, path in result.paths.items():
+        print(f"  {label} {path}")
+    print(f"  report {build_report(result)}")
+    return 0
+
+
 def _cmd_test(args: argparse.Namespace) -> int:
     """Run the test suite in-process so `chp all` needs no extra tooling."""
     import pytest
@@ -149,6 +170,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
         ("build", _cmd_build, argparse.Namespace()),
         ("features", _cmd_features, argparse.Namespace()),
         ("eda", _cmd_eda, argparse.Namespace()),
+        ("baselines", _cmd_baselines, argparse.Namespace(resamples=1000)),
         ("test", _cmd_test, argparse.Namespace()),
     )
     for name, handler, step_args in steps:
@@ -197,10 +219,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eda_cmd.set_defaults(func=_cmd_eda)
 
+    baselines_cmd = subparsers.add_parser(
+        "baselines", help="fit the baselines and models, evaluate, and render the results"
+    )
+    baselines_cmd.add_argument(
+        "--resamples",
+        type=int,
+        default=1000,
+        help="bootstrap resamples for the confidence intervals (default 1000)",
+    )
+    baselines_cmd.set_defaults(func=_cmd_baselines)
+
     test_cmd = subparsers.add_parser("test", help="run the test suite")
     test_cmd.set_defaults(func=_cmd_test)
 
-    all_cmd = subparsers.add_parser("all", help="fetch, build, eda, then test — the full rebuild")
+    all_cmd = subparsers.add_parser(
+        "all", help="fetch, build, features, eda, baselines, then test — the full rebuild"
+    )
     all_cmd.set_defaults(func=_cmd_all)
 
     return parser
