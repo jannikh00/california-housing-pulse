@@ -154,6 +154,26 @@ def _cmd_baselines(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    """Render the MVP story from saved predictions — never refits a model."""
+    from .reporting.report import build_report
+    from .reporting.results import PREDICTIONS_PATH
+
+    if not PREDICTIONS_PATH.exists():
+        print(
+            f"\nERROR: {relative(PREDICTIONS_PATH)} not found. Run `chp baselines` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print("Rendering the MVP results and figures …")
+    report_path, figure_paths = build_report(resamples=args.resamples)
+    for path in figure_paths:
+        print(f"  figure {path}")
+    print(f"  report {report_path}")
+    return 0
+
+
 def _cmd_test(args: argparse.Namespace) -> int:
     """Run the test suite in-process so `chp all` needs no extra tooling."""
     import pytest
@@ -164,13 +184,14 @@ def _cmd_test(args: argparse.Namespace) -> int:
 
 
 def _cmd_all(args: argparse.Namespace) -> int:
-    """The full documented rebuild: fetch, build, eda, test."""
+    """The full documented rebuild: fetch through report, then test."""
     steps = (
         ("fetch", _cmd_fetch, argparse.Namespace(source=None, force=False)),
         ("build", _cmd_build, argparse.Namespace()),
         ("features", _cmd_features, argparse.Namespace()),
         ("eda", _cmd_eda, argparse.Namespace()),
         ("baselines", _cmd_baselines, argparse.Namespace(resamples=1000)),
+        ("report", _cmd_report, argparse.Namespace(resamples=1000)),
         ("test", _cmd_test, argparse.Namespace()),
     )
     for name, handler, step_args in steps:
@@ -230,11 +251,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     baselines_cmd.set_defaults(func=_cmd_baselines)
 
+    report_cmd = subparsers.add_parser(
+        "report", help="render the MVP results document and figures from saved predictions"
+    )
+    report_cmd.add_argument(
+        "--resamples",
+        type=int,
+        default=1000,
+        help="bootstrap resamples for the reported intervals (default 1000)",
+    )
+    report_cmd.set_defaults(func=_cmd_report)
+
     test_cmd = subparsers.add_parser("test", help="run the test suite")
     test_cmd.set_defaults(func=_cmd_test)
 
     all_cmd = subparsers.add_parser(
-        "all", help="fetch, build, features, eda, baselines, then test — the full rebuild"
+        "all",
+        help="fetch, build, features, eda, baselines, report, then test — the full rebuild",
     )
     all_cmd.set_defaults(func=_cmd_all)
 
