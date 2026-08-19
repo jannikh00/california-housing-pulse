@@ -15,16 +15,17 @@ export UV_NO_EDITABLE := 1
 
 RUN := $(UV) run --reinstall-package $(PACKAGE)
 
-.PHONY: all setup fetch build features eda baselines test verify lint clean help
+.PHONY: all setup fetch build features eda baselines report test verify lint clean help
 
 help:
 	@echo "make setup   - create .venv and install dependencies"
-	@echo "make all     - fetch, build, features, eda, baselines, test (full rebuild)"
+	@echo "make all     - fetch, build, features, eda, baselines, report, test (full rebuild)"
 	@echo "make fetch   - download raw sources and record provenance"
 	@echo "make build   - rebuild staged tables, panel, report, and dictionary"
 	@echo "make features- build the leakage-safe feature matrix and availability table"
 	@echo "make eda     - render the exploratory analysis report and figures"
 	@echo "make baselines - fit baselines and models, evaluate, render results"
+	@echo "make report  - render the MVP results document and figures"
 	@echo "make test    - run the test suite"
 	@echo "make verify  - check raw snapshots against recorded hashes"
 	@echo "make lint    - run ruff"
@@ -50,6 +51,9 @@ eda: setup
 
 baselines: setup
 	$(RUN) chp baselines
+
+report: setup
+	$(RUN) chp report
 
 test: setup
 	$(RUN) chp test
